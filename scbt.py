@@ -69,6 +69,14 @@ def check_pattern(df):
     if len(df) < 3:  # Меняем с 4 на 3
         return None
     
+    # Проверяем что свеча 3 закрыта (время свечи прошло)
+    current_time = int(time.time() * 1000)
+    candle3_end_time = df["ts"].iloc[-1] + 60000  # конец минутной свечи
+    
+    if current_time < candle3_end_time:
+        print("Свеча 3 еще не закрыта, ждем...")
+        return None
+    
     # Свеча 1 (самая старая - формирует уровень)
     high1 = df["high"].iloc[-3]
     low1 = df["low"].iloc[-3]
