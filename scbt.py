@@ -45,10 +45,16 @@ def calculate_position(entry_price, stop_loss_price, capital, risk_percent):
     if price_diff == 0:
         raise ValueError("Stop-loss cannot be zero")
     size = risk_amount / price_diff
-    print(f"Капитал: {capital} USDT")
-    print(f"Риск: {risk_percent}% = {risk_amount:.2f} USDT")
-    print(f"Сумма: {size:.4f} ETH")
-    return size
+    
+    # Форматируем информацию о позиции для вывода
+    position_info = (
+        f"Капитал: {capital} USDT\n"
+        f"Риск: {risk_percent}% = {risk_amount:.2f} USDT\n"
+        f"Сумма позиции: {size:.4f} ETH"
+    )
+    
+    print(position_info)
+    return size, position_info
 
 def fetch_new_data():
     try:
@@ -114,25 +120,27 @@ def check_pattern(df):
 def print_signal(signal):
     time_str = datetime.fromtimestamp(signal["timestamp"] / 1000).strftime('%H:%M:%S')
     
-    # Формируем общее сообщение для консоли и Telegram
-    message = f"""scob {signal['direction'].lower()}
-Время: {time_str}
-Вход: {signal['entry']}
-Стоп: {signal['stop_loss']}
-Тейк-профит: {signal['take_profit']}"""
-    
-    # Выводим в консоль
-    print(message)
-    
-    # Рассчитываем и выводим позицию
-    calculate_position(
+    # Рассчитываем позицию
+    position_size, position_info = calculate_position(
         entry_price=signal['entry'],
         stop_loss_price=signal['stop_loss'],
         capital=CAPITAL,
         risk_percent=RISK_PERCENT
     )
     
-    # Отправляем то же сообщение в Telegram
+    # Формируем общее сообщение для консоли и Telegram
+    message = f"""scob {signal['direction'].lower()}
+Время: {time_str}
+Вход: {signal['entry']}
+Стоп: {signal['stop_loss']}
+Тейк-профит: {signal['take_profit']}
+
+{position_info}"""
+    
+    # Выводим в консоль
+    print(message)
+    
+    # Отправляем сообщение в Telegram
     send_telegram_message(message)
 
 if __name__ == "__main__":
