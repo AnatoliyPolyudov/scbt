@@ -58,7 +58,7 @@ def calculate_position(entry_price, stop_loss_price, capital, risk_percent):
 
 def fetch_new_data():
     try:
-        ohlcv = ex.fetch_ohlcv(SYMBOL, TF, limit=4)  # Берем 4 свечи (все закрытые)
+        ohlcv = ex.fetch_ohlcv(SYMBOL, TF, limit=3)  # Меняем с 4 на 3
         df = pd.DataFrame(ohlcv, columns=["ts","open","high","low","close","volume"])
         return df
     except Exception as e:
@@ -66,48 +66,50 @@ def fetch_new_data():
         return pd.DataFrame()
 
 def check_pattern(df):
-    if len(df) < 4:  # Проверяем что есть минимум 4 свечи
+    if len(df) < 3:  # Меняем с 4 на 3
         return None
     
-    # Свеча 1 (самая старая)
-    high1 = df["high"].iloc[-4]
-    low1 = df["low"].iloc[-4]
+    # Свеча 1 (самая старая - формирует уровень)
+    high1 = df["high"].iloc[-3]
+    low1 = df["low"].iloc[-3]
     
-    # Свеча 2 (средняя)
-    high2 = df["high"].iloc[-3]
-    low2 = df["low"].iloc[-3]
-    close2 = df["close"].iloc[-3]
+    # Свеча 2 (паттерн ScoB)
+    high2 = df["high"].iloc[-2]
+    low2 = df["low"].iloc[-2]
+    close2 = df["close"].iloc[-2]
     
-    # Свеча 3 (последняя закрытая)
-    high3 = df["high"].iloc[-2]
-    low3 = df["low"].iloc[-2]
-    close3 = df["close"].iloc[-2]
+    # Свеча 3 (текущая закрытая - подтверждение)
+    high3 = df["high"].iloc[-1]
+    low3 = df["low"].iloc[-1]
+    close3 = df["close"].iloc[-1]
     
-    time_str = datetime.fromtimestamp(df['ts'].iloc[-3] / 1000).strftime('%H:%M')
-    print(f"Свеча 2 {time_str} H:{high2:.2f} L:{low2:.2f}")
+    time_str = datetime.fromtimestamp(df['ts'].iloc[-2] / 1000).strftime('%H:%M')
+    print(f"Анализ ScoB паттерна {time_str} H:{high2:.2f} L:{low2:.2f}")
     
+    # LONG паттерн: ScoB вниз + закрытие выше high2
     if (low2 < low1 and close2 > low1 and close3 > high2):
         entry = high2
         stop_loss = low2
         risk = entry - stop_loss
         take_profit = entry + (risk * 2)
-        print("scob long")
+        print("ScoB LONG паттерн обнаружен")
         return {
-            "timestamp": df["ts"].iloc[-2],  # Время закрытия свечи 3
+            "timestamp": df["ts"].iloc[-1],  # Меняем на время последней свечи
             "direction": "LONG",
             "entry": round(entry, 2),
             "stop_loss": round(stop_loss, 2),
             "take_profit": round(take_profit, 2),
         }
     
+    # SHORT паттерн: ScoB вверх + закрытие ниже low2
     elif (high2 > high1 and close2 < high1 and close3 < low2):
         entry = low2
         stop_loss = high2
         risk = stop_loss - entry
         take_profit = entry - (risk * 2)
-        print("scob short")
+        print("ScoB SHORT паттерн обнаружен")
         return {
-            "timestamp": df["ts"].iloc[-2],  # Время закрытия свечи 3
+            "timestamp": df["ts"].iloc[-1],  # Меняем на время последней свечи
             "direction": "SHORT", 
             "entry": round(entry, 2),
             "stop_loss": round(stop_loss, 2),
@@ -193,3 +195,4 @@ if __name__ == "__main__":
             send_telegram_message(error_msg)
             print(f"\nОшибка: {e}")
             time.sleep(30)
+
