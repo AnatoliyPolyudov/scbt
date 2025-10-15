@@ -45,20 +45,14 @@ def calculate_position(entry_price, stop_loss_price, capital, risk_percent):
     if price_diff == 0:
         raise ValueError("Stop-loss cannot be zero")
     size = risk_amount / price_diff
-    
-    # Форматируем информацию о позиции для вывода
-    position_info = (
-        f"Капитал: {capital} USDT\n"
-        f"Риск: {risk_percent}% = {risk_amount:.2f} USDT\n"
-        f"Сумма позиции: {size:.4f} ETH"
-    )
-    
-    print(position_info)
-    return size, position_info
+    print(f"Капитал: {capital} USDT")
+    print(f"Риск: {risk_percent}% = {risk_amount:.2f} USDT")
+    print(f"Сумма: {size:.4f} ETH")
+    return size
 
 def fetch_new_data():
     try:
-        ohlcv = ex.fetch_ohlcv(SYMBOL, TF, limit=3)  # Меняем с 4 на 3
+        ohlcv = ex.fetch_ohlcv(SYMBOL, TF, limit=4)  # Берем 4 свечи (все закрытые)
         df = pd.DataFrame(ohlcv, columns=["ts","open","high","low","close","volume"])
         return df
     except Exception as e:
@@ -66,58 +60,48 @@ def fetch_new_data():
         return pd.DataFrame()
 
 def check_pattern(df):
-    if len(df) < 3:  # Меняем с 4 на 3
+    if len(df) < 4:  # Проверяем что есть минимум 4 свечи
         return None
     
-    # Проверяем что свеча 3 закрыта (время свечи прошло)
-    current_time = int(time.time() * 1000)
-    candle3_end_time = df["ts"].iloc[-1] + 60000  # конец минутной свечи
+    # Свеча 1 (самая старая)
+    high1 = df["high"].iloc[-4]
+    low1 = df["low"].iloc[-4]
     
-    if current_time < candle3_end_time:
-        print("Свеча 3 еще не закрыта, ждем...")
-        return None
+    # Свеча 2 (средняя)
+    high2 = df["high"].iloc[-3]
+    low2 = df["low"].iloc[-3]
+    close2 = df["close"].iloc[-3]
     
-    # Свеча 1 (самая старая - формирует уровень)
-    high1 = df["high"].iloc[-3]
-    low1 = df["low"].iloc[-3]
+    # Свеча 3 (последняя закрытая)
+    high3 = df["high"].iloc[-2]
+    low3 = df["low"].iloc[-2]
+    close3 = df["close"].iloc[-2]
     
-    # Свеча 2 (паттерн ScoB)
-    high2 = df["high"].iloc[-2]
-    low2 = df["low"].iloc[-2]
-    close2 = df["close"].iloc[-2]
+    time_str = datetime.fromtimestamp(df['ts'].iloc[-3] / 1000).strftime('%H:%M')
+    print(f"Свеча 2 {time_str} H:{high2:.2f} L:{low2:.2f}")
     
-    # Свеча 3 (текущая закрытая - подтверждение)
-    high3 = df["high"].iloc[-1]
-    low3 = df["low"].iloc[-1]
-    close3 = df["close"].iloc[-1]
-    
-    time_str = datetime.fromtimestamp(df['ts'].iloc[-2] / 1000).strftime('%H:%M')
-    print(f"Анализ ScoB паттерна {time_str} H:{high2:.2f} L:{low2:.2f}")
-    
-    # LONG паттерн: ScoB вниз + закрытие выше high2
     if (low2 < low1 and close2 > low1 and close3 > high2):
         entry = high2
         stop_loss = low2
         risk = entry - stop_loss
         take_profit = entry + (risk * 2)
-        print("ScoB LONG паттерн обнаружен")
+        print("scob long")
         return {
-            "timestamp": df["ts"].iloc[-1],  # Меняем на время последней свечи
+            "timestamp": df["ts"].iloc[-2],  # Время закрытия свечи 3
             "direction": "LONG",
             "entry": round(entry, 2),
             "stop_loss": round(stop_loss, 2),
             "take_profit": round(take_profit, 2),
         }
     
-    # SHORT паттерн: ScoB вверх + закрытие ниже low2
     elif (high2 > high1 and close2 < high1 and close3 < low2):
         entry = low2
         stop_loss = high2
         risk = stop_loss - entry
         take_profit = entry - (risk * 2)
-        print("ScoB SHORT паттерн обнаружен")
+        print("scob short")
         return {
-            "timestamp": df["ts"].iloc[-1],  # Меняем на время последней свечи
+            "timestamp": df["ts"].iloc[-2],  # Время закрытия свечи 3
             "direction": "SHORT", 
             "entry": round(entry, 2),
             "stop_loss": round(stop_loss, 2),
@@ -130,27 +114,25 @@ def check_pattern(df):
 def print_signal(signal):
     time_str = datetime.fromtimestamp(signal["timestamp"] / 1000).strftime('%H:%M:%S')
     
-    # Рассчитываем позицию
-    position_size, position_info = calculate_position(
+    # Формируем общее сообщение для консоли и Telegram
+    message = f"""scob {signal['direction'].lower()}
+Время: {time_str}
+Вход: {signal['entry']}
+Стоп: {signal['stop_loss']}
+Тейк-профит: {signal['take_profit']}"""
+    
+    # Выводим в консоль
+    print(message)
+    
+    # Рассчитываем и выводим позицию
+    calculate_position(
         entry_price=signal['entry'],
         stop_loss_price=signal['stop_loss'],
         capital=CAPITAL,
         risk_percent=RISK_PERCENT
     )
     
-    # Формируем общее сообщение для консоли и Telegram
-    message = f"""scob {signal['direction'].lower()}
-Время: {time_str}
-Вход: {signal['entry']}
-Стоп: {signal['stop_loss']}
-Тейк-профит: {signal['take_profit']}
-
-{position_info}"""
-    
-    # Выводим в консоль
-    print(message)
-    
-    # Отправляем сообщение в Telegram
+    # Отправляем то же сообщение в Telegram
     send_telegram_message(message)
 
 if __name__ == "__main__":
@@ -203,4 +185,3 @@ if __name__ == "__main__":
             send_telegram_message(error_msg)
             print(f"\nОшибка: {e}")
             time.sleep(30)
-
