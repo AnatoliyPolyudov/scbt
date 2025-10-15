@@ -3,6 +3,7 @@ import time
 from exchange import check_connection
 from patterns import check_scob_pattern, wait_for_candle_close
 from telegram import send_startup_message, send_telegram_message, send_error_message
+from filter_4h import filter_4h
 
 def main():
     print("Starting ScoB Bot...")
@@ -15,29 +16,43 @@ def main():
     if not check_connection():
         return
     
+    # Initialize 4H filter
+    filter_4h.get_4h_range()
+    
     last_signal_time = 0
+    last_4h_check = 0
     
     while True:
         try:
-            # Wait for candle close
-            wait_for_candle_close()
+            current_time = time.time()
             
-            # Check for patterns
-            signal = check_scob_pattern()
+            # Check 4H breakout every 5 minutes
+            if current_time - last_4h_check > 300:  # 5 minutes
+                filter_4h.check_breakout()
+                filter_4h.print_status()
+                last_4h_check = current_time
             
-            # Send signal if found
-            if signal:
-                current_time = int(time.time() * 1000)
-                # Prevent duplicate signals
-                if current_time - last_signal_time > 60000:
-                    send_telegram_message(
-                        signal["title"],
-                        signal["time"], 
-                        signal["entry"],
-                        signal["stop_loss"],
-                        signal["take_profit"]
-                    )
-                    last_signal_time = current_time
+            # Only check 1m patterns if 4H filter is active
+            if filter_4h.is_active():
+                # Wait for candle close
+                wait_for_candle_close()
+                
+                # Check for patterns
+                signal = check_scob_pattern()
+                
+                # Send signal if found
+                if signal:
+                    current_timestamp = int(time.time() * 1000)
+                    # Prevent duplicate signals
+                    if current_timestamp - last_signal_time > 60000:
+                        send_telegram_message(
+                            signal["title"],
+                            signal["time"], 
+                            signal["entry"],
+                            signal["stop_loss"],
+                            signal["take_profit"]
+                        )
+                        last_signal_time = current_timestamp
             
             # Wait before next check
             time.sleep(5)
