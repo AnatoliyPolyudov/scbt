@@ -11,7 +11,7 @@ def calculate_position(entry_price, stop_loss_price):
     
     size = risk_amount / price_diff
     
-    position_info = f"""Capital: {CAPITAL} USDT
+    position_info = f"""Amount: {CAPITAL} USDT
 Risk: {RISK_PERCENT}% = {risk_amount:.2f} USDT
 Position size: {size:.4f} ETH"""
     
