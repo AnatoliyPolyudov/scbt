@@ -34,7 +34,7 @@ tp: {take_profit}
 
 def send_startup_message():
     """Send bot startup message"""
-    message = f"Bot started\n{SYMBOL}\n{TF}\nAmount : {CAPITAL} USDT\nRisk: {RISK_PERCENT}%"
+    message = f"Started\n{SYMBOL}\n{TF}\nAmount : {CAPITAL} USDT\nRisk: {RISK_PERCENT}%"
     send_telegram_message("start", "", "", "", message)
 
 def send_error_message(error):
