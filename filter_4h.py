@@ -37,3 +37,24 @@ class FourHourFilter:
 
 # Global instance
 filter_4h = FourHourFilter()
+
+def get_4h_range(self):
+        """Get range from previous closed 4H candle"""
+        try:
+            # Получаем 2 последние 4H свечи
+            df = fetch_candles(symbol=SYMBOL, timeframe="4h", limit=2)
+            if len(df) < 2:
+                print("[4H FILTER] Not enough 4H candles")
+                return False
+                
+            # Предыдущая закрытая свеча (самая старая из двух)
+            prev_candle = df.iloc[0]  # индекс 0 - самая старая
+            self.range_high = prev_candle["high"]
+            self.range_low = prev_candle["low"]
+            
+            print(f"[4H FILTER] Range updated: H:{self.range_high:.2f} L:{self.range_low:.2f}")
+            return True
+            
+        except Exception as e:
+            print(f"[4H FILTER] Error getting 4H range: {e}")
+            return False
