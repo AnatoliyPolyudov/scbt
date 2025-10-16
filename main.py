@@ -1,18 +1,23 @@
 # main.py
-import order_manager
 import time
-from exchange import check_connection
+from threading import Thread
+from web_server import app
+import order_manager  # подписки подключаются здесь
 from patterns import check_scob_pattern, wait_for_candle_close
 from telegram import send_startup_message, send_telegram_message, send_error_message
+from exchange import check_connection
 
-def main():
+def run_web_server():
+    """Запуск Flask в отдельном потоке"""
+    app.run(host='0.0.0.0', port=5000, threaded=True)
+
+def main_loop():
     print("Starting ScoB Bot...")
     print("Monitoring patterns...")
     
-    # Send startup message
+    # Отправка стартап-сообщения
     send_startup_message()
     
-    # Check exchange connection
     if not check_connection():
         return
     
@@ -20,16 +25,12 @@ def main():
     
     while True:
         try:
-            # Wait for candle close
             wait_for_candle_close()
             
-            # Check for patterns
             signal = check_scob_pattern()
             
-            # Send signal if found
             if signal:
                 current_time = int(time.time() * 1000)
-                # Prevent duplicate signals
                 if current_time - last_signal_time > 60000:
                     send_telegram_message(
                         signal["title"],
@@ -40,9 +41,8 @@ def main():
                     )
                     last_signal_time = current_time
             
-            # Wait before next check
             time.sleep(5)
-            
+        
         except KeyboardInterrupt:
             print("Bot stopped manually")
             break
@@ -52,4 +52,9 @@ def main():
             time.sleep(30)
 
 if __name__ == "__main__":
-    main()
+    # Flask запускаем в отдельном потоке
+    web_thread = Thread(target=run_web_server, daemon=True)
+    web_thread.start()
+    
+    # основной цикл бота
+    main_loop()
