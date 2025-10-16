@@ -1,12 +1,11 @@
 # telegram.py
+import json
 import requests
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL, TF, CAPITAL, RISK_PERCENT
 from utils import calculate_position
 
 def send_telegram_message(title, time_str, entry, stop_loss, take_profit):
-    """Send signal to Telegram with position calculation"""
-    # Calculate position only for trade signals (not for startup/error messages)
-    if entry and stop_loss:  # Only calculate for actual trades
+    if entry and stop_loss:
         size, position_info = calculate_position(float(entry), float(stop_loss))
         message = f"""scob {title}
 {time_str}
@@ -15,21 +14,29 @@ stop: {stop_loss}
 tp: {take_profit}
 
 {position_info}"""
+        
+        keyboard = {
+            'inline_keyboard': [[
+                {'text': 'BUY LIMIT', 'callback_data': f'BUY_LIMIT:{entry}'},
+                {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'}
+            ]]
+        }
     else:
-        # For startup/error messages, use the take_profit field as message
         message = take_profit
+        keyboard = None
     
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {
             'chat_id': TELEGRAM_CHAT_ID,
             'text': message,
-            'parse_mode': 'HTML'
+            'parse_mode': 'HTML',
+            'reply_markup': json.dumps(keyboard) if keyboard else None
         }
         response = requests.post(url, data=payload, timeout=10)
         return response.status_code == 200
     except Exception as e:
-        print(f"Telegram error: {e}")
+        print(f"TELEGRAM_ERROR: {e}")
         return False
 
 def send_startup_message():
