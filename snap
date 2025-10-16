@@ -1,0 +1,296 @@
+===== ./main.py =====
+# main.py
+import order_manager
+import time
+from exchange import check_connection
+from patterns import check_scob_pattern, wait_for_candle_close
+from telegram import send_startup_message, send_telegram_message, send_error_message
+
+def main():
+    print("Starting ScoB Bot...")
+    print("Monitoring patterns...")
+    
+    # Send startup message
+    send_startup_message()
+    
+    # Check exchange connection
+    if not check_connection():
+        return
+    
+    last_signal_time = 0
+    
+    while True:
+        try:
+            # Wait for candle close
+            wait_for_candle_close()
+            
+            # Check for patterns
+            signal = check_scob_pattern()
+            
+            # Send signal if found
+            if signal:
+                current_time = int(time.time() * 1000)
+                # Prevent duplicate signals
+                if current_time - last_signal_time > 60000:
+                    send_telegram_message(
+                        signal["title"],
+                        signal["time"], 
+                        signal["entry"],
+                        signal["stop_loss"],
+                        signal["take_profit"]
+                    )
+                    last_signal_time = current_time
+            
+            # Wait before next check
+            time.sleep(5)
+            
+        except KeyboardInterrupt:
+            print("Bot stopped manually")
+            break
+        except Exception as e:
+            print(f"Bot error: {e}")
+            send_error_message(str(e))
+            time.sleep(30)
+
+if __name__ == "__main__":
+    main()
+===== ./order_manager.py =====
+from event_bus import subscribe
+
+def handle_button_click(data):
+    print("ORDER_MANAGER: Received button click:", data)
+    
+    # Тестовое уведомление вместо реального ордера
+    action = data.get("action")
+    price = data.get("price")
+    
+    if action == "BUY_LIMIT":
+        print(f"TEST_ORDER: Would create BUY LIMIT at {price}")
+    elif action == "SELL_LIMIT":
+        print(f"TEST_ORDER: Would create SELL LIMIT at {price}")
+
+subscribe("BUTTON_CLICK", handle_button_click)===== ./callback_handler.py =====
+from event_bus import publish def 
+handle_callback(query_data):
+    print("CALLBACK_HANDLER: Received callback:", 
+    query_data) action, price = query_data.split(':')
+    publish("BUTTON_CLICK", {"action": action, "price": price})
+===== ./web_server.py =====
+from flask import Flask, request from callback_handler 
+import handle_callback app = Flask(__name__) 
+@app.route('/webhook', methods=['POST']) def 
+telegram_webhook():
+    data = request.json callback_data = 
+    data['callback_query']['data'] 
+    handle_callback(callback_data) return 'OK'
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+===== ./patterns.py =====
+# patterns.py
+import time
+from datetime import datetime
+from exchange import fetch_candles
+from config import CANDLES_NEEDED
+
+def wait_for_candle_close():
+    """Wait for current candle to close"""
+    current_time = int(time.time() * 1000)
+    candle_duration = 60000  # 1 minute
+    next_candle_time = (current_time // candle_duration + 1) * candle_duration
+    wait_time = (next_candle_time - current_time) / 1000
+    if wait_time > 0:
+        print(f"Waiting for candle close: {wait_time:.1f} sec")
+        time.sleep(wait_time)
+
+def check_scob_pattern():
+    """Check ScoB pattern on closed candles - returns signal data or None"""
+    print("Analyzing candles for ScoB pattern...")
+    
+    df = fetch_candles(limit=CANDLES_NEEDED)
+    if len(df) < CANDLES_NEEDED:
+        print("Not enough candles for analysis")
+        return None
+    
+    # Candle 1 (oldest)
+    high1 = df["high"].iloc[-3]
+    low1 = df["low"].iloc[-3]
+    
+    # Candle 2 (ScoB pattern)
+    high2 = df["high"].iloc[-2]
+    low2 = df["low"].iloc[-2]
+    close2 = df["close"].iloc[-2]
+    
+    # Candle 3 (confirmation - must be closed)
+    high3 = df["high"].iloc[-1]
+    low3 = df["low"].iloc[-1]
+    close3 = df["close"].iloc[-1]
+    
+    time_str = datetime.fromtimestamp(df['ts'].iloc[-1] / 1000).strftime('%H:%M')
+    
+    print(f"Candles data:")
+    print(f"  Candle 1: H:{high1:.2f} L:{low1:.2f}")
+    print(f"  Candle 2: H:{high2:.2f} L:{low2:.2f} C:{close2:.2f}")
+    print(f"  Candle 3: H:{high3:.2f} L:{low3:.2f} C:{close3:.2f}")
+    
+    # LONG: ScoB down + close above high2
+    if (low2 < low1 and close2 > low1 and close3 > high2):
+        entry = high2
+        stop_loss = low2
+        risk = entry - stop_loss
+        take_profit = entry + (risk * 2)
+        print(f"ScoB LONG pattern detected at {time_str}")
+        return {
+            "title": "long",
+            "time": time_str,
+            "entry": round(entry, 2),
+            "stop_loss": round(stop_loss, 2),
+            "take_profit": round(take_profit, 2),
+        }
+    
+    # SHORT: ScoB up + close below low2  
+    elif (high2 > high1 and close2 < high1 and close3 < low2):
+        entry = low2
+        stop_loss = high2
+        risk = stop_loss - entry
+        take_profit = entry - (risk * 2)
+        print(f"ScoB SHORT pattern detected at {time_str}")
+        return {
+            "title": "short",
+            "time": time_str,
+            "entry": round(entry, 2),
+            "stop_loss": round(stop_loss, 2),
+            "take_profit": round(take_profit, 2),
+        }
+    
+    print(f"No ScoB pattern found at {time_str}")
+    return None
+===== ./config.py =====
+# config.py
+SYMBOL = "ETH/USDT:USDT"
+TF = "1m" 
+CAPITAL = 1000
+RISK_PERCENT = 1
+
+TELEGRAM_BOT_TOKEN = "8436652130:AAF6On0GJtRHfMZyqD3mpM57eXZfWofJeng"
+TELEGRAM_CHAT_ID = "317217451"
+
+CANDLES_NEEDED = 3
+===== ./telegram.py =====
+import json
+import requests
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL, TF, CAPITAL, RISK_PERCENT
+from utils import calculate_position
+
+def send_telegram_message(title, time_str, entry, stop_loss, take_profit):
+    if entry and stop_loss:
+        size, position_info = calculate_position(float(entry), float(stop_loss))
+        message = f"""scob {title}
+{time_str}
+entry: {entry}
+stop: {stop_loss}
+tp: {take_profit}
+
+{position_info}"""
+        
+        keyboard = {
+            'inline_keyboard': [[
+                {'text': 'BUY LIMIT', 'callback_data': f'BUY_LIMIT:{entry}'},
+                {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'}
+            ]]
+        }
+    else:
+        message = take_profit
+        keyboard = None
+    
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            'chat_id': TELEGRAM_CHAT_ID,
+            'text': message,
+            'parse_mode': 'HTML',
+            'reply_markup': json.dumps(keyboard) if keyboard else None
+        }
+        response = requests.post(url, data=payload, timeout=10)
+        return response.status_code == 200
+    except Exception as e:
+        print(f"TELEGRAM_ERROR: {e}")
+        return False
+
+def send_startup_message():
+    message = f"Started\n{SYMBOL}\n{TF}\nAmount : {CAPITAL} USDT\nRisk: {RISK_PERCENT}%"
+    send_telegram_message("start", "", "", "", message)
+
+def send_error_message(error):
+    send_telegram_message("error", "", "", "", f"Bot error: {error}")
+
+def set_webhook():
+    url = "http://194.87.238.84:5000/webhook"
+    response = requests.post(
+        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
+        data={"url": url}
+    )
+    print(f"Webhook set: {response.status_code}")
+===== ./event_bus.py =====
+subscribers = {}
+
+def subscribe(event_type, callback):
+    if event_type not in subscribers:
+        subscribers[event_type] = []
+    subscribers[event_type].append(callback)
+
+def publish(event_type, data):
+    if event_type in subscribers:
+        for callback in subscribers[event_type]:
+            callback(data)
+===== ./utils.py =====
+# utils.py
+from config import CAPITAL, RISK_PERCENT
+
+def calculate_position(entry_price, stop_loss_price):
+    """Calculate position size based on risk management"""
+    risk_amount = CAPITAL * (RISK_PERCENT / 100)
+    price_diff = abs(entry_price - stop_loss_price)
+    
+    if price_diff == 0:
+        raise ValueError("Stop-loss cannot be zero")
+    
+    size = risk_amount / price_diff
+    
+    position_info = f"""Amount: {CAPITAL} USDT
+Risk: {RISK_PERCENT}% = {risk_amount:.2f} USDT
+Position size: {size:.4f} ETH"""
+    
+    print(position_info)
+    return size, position_info
+===== ./README.md =====
+# scbt===== ./exchange.py =====
+# exchange.py
+import ccxt
+import pandas as pd
+from config import SYMBOL, TF
+
+# Exchange connection
+ex = ccxt.okx({
+    "enableRateLimit": True,
+    "options": {"defaultType": "swap"}
+})
+
+def fetch_candles(limit=3):
+    """Fetch candles from exchange"""
+    try:
+        ohlcv = ex.fetch_ohlcv(SYMBOL, TF, limit=limit)
+        df = pd.DataFrame(ohlcv, columns=["ts","open","high","low","close","volume"])
+        return df
+    except Exception as e:
+        print(f"Error fetching data: {e}")
+        return pd.DataFrame()
+
+def check_connection():
+    """Check exchange connection"""
+    try:
+        markets = ex.load_markets()
+        print("OKX exchange connected successfully")
+        return True
+    except Exception as e:
+        print(f"Exchange connection error: {e}")
+        return False
