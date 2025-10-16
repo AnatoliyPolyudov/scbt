@@ -1,4 +1,5 @@
 # main.py
+import order_manager
 import time
 from exchange import check_connection
 from patterns import check_scob_pattern, wait_for_candle_close
