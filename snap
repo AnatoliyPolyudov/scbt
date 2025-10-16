@@ -70,19 +70,25 @@ def handle_button_click(data):
         print(f"TEST_ORDER: Would create SELL LIMIT at {price}")
 
 subscribe("BUTTON_CLICK", handle_button_click)===== ./callback_handler.py =====
-from event_bus import publish def 
-handle_callback(query_data):
-    print("CALLBACK_HANDLER: Received callback:", 
-    query_data) action, price = query_data.split(':')
+from event_bus import publish
+
+def handle_callback(query_data):
+    print("CALLBACK_HANDLER: Received callback:", query_data)
+    action, price = query_data.split(':')
     publish("BUTTON_CLICK", {"action": action, "price": price})
 ===== ./web_server.py =====
-from flask import Flask, request from callback_handler 
-import handle_callback app = Flask(__name__) 
-@app.route('/webhook', methods=['POST']) def 
-telegram_webhook():
-    data = request.json callback_data = 
-    data['callback_query']['data'] 
-    handle_callback(callback_data) return 'OK'
+from flask import Flask, request
+from callback_handler import handle_callback
+
+app = Flask(__name__)
+
+@app.route('/webhook', methods=['POST'])
+def telegram_webhook():
+    data = request.json
+    callback_data = data['callback_query']['data']
+    handle_callback(callback_data)
+    return 'OK'
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
 ===== ./patterns.py =====
