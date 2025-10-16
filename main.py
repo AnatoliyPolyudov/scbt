@@ -2,6 +2,7 @@
 import order_manager
 import time
 import threading
+import gc
 import requests
 import json
 from exchange import check_connection
@@ -81,7 +82,8 @@ def main():
                         signal["take_profit"]
                     )
                     last_signal_time = current_time
-            
+            gc.collect()
+            time.sleep(1) 
             # Wait before next check
             time.sleep(5)
             
