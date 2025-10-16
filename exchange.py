@@ -1,6 +1,5 @@
 # exchange.py
 import ccxt
-import pandas as pd
 from config import SYMBOL, TF
 
 # Exchange connection
@@ -10,14 +9,13 @@ ex = ccxt.okx({
 })
 
 def fetch_candles(limit=3):
-    """Fetch candles from exchange"""
+    """Fetch candles from exchange - возвращает список вместо DataFrame"""
     try:
         ohlcv = ex.fetch_ohlcv(SYMBOL, TF, limit=limit)
-        df = pd.DataFrame(ohlcv, columns=["ts","open","high","low","close","volume"])
-        return df
+        return ohlcv  # [[timestamp, open, high, low, close, volume], ...]
     except Exception as e:
         print(f"Error fetching data: {e}")
-        return pd.DataFrame()
+        return []
 
 def check_connection():
     """Check exchange connection"""

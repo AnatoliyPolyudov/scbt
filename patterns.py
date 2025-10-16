@@ -18,26 +18,27 @@ def check_scob_pattern():
     """Check ScoB pattern on closed candles - returns signal data or None"""
     print("Analyzing candles for ScoB pattern...")
     
-    df = fetch_candles(limit=CANDLES_NEEDED)
-    if len(df) < CANDLES_NEEDED:
+    candles = fetch_candles(limit=CANDLES_NEEDED)
+    if len(candles) < CANDLES_NEEDED:
         print("Not enough candles for analysis")
         return None
     
-    # Candle 1 (oldest)
-    high1 = df["high"].iloc[-3]
-    low1 = df["low"].iloc[-3]
+    # Candle 1 (oldest) - индекс -3
+    # candles[0] = [timestamp, open, high, low, close, volume]
+    high1 = candles[-3][2]  # high
+    low1 = candles[-3][3]   # low
     
-    # Candle 2 (ScoB pattern)
-    high2 = df["high"].iloc[-2]
-    low2 = df["low"].iloc[-2]
-    close2 = df["close"].iloc[-2]
+    # Candle 2 (ScoB pattern) - индекс -2  
+    high2 = candles[-2][2]
+    low2 = candles[-2][3]
+    close2 = candles[-2][4]
     
-    # Candle 3 (confirmation - must be closed)
-    high3 = df["high"].iloc[-1]
-    low3 = df["low"].iloc[-1]
-    close3 = df["close"].iloc[-1]
+    # Candle 3 (confirmation) - индекс -1
+    high3 = candles[-1][2]
+    low3 = candles[-1][3] 
+    close3 = candles[-1][4]
     
-    time_str = datetime.fromtimestamp(df['ts'].iloc[-1] / 1000).strftime('%H:%M')
+    time_str = datetime.fromtimestamp(candles[-1][0] / 1000).strftime('%H:%M')
     
     print(f"Candles data:")
     print(f"  Candle 1: H:{high1:.2f} L:{low1:.2f}")
