@@ -1,4 +1,4 @@
-Project Structure:
+qqProject Structure:
 ./main.py
 ./order_manager.py
 ./callback_handler.py
@@ -16,9 +16,7 @@ __pycache__/config.cpython-39.pyc
 __pycache__/exchange.cpython-39.pyc
 __pycache__/utils.cpython-39.pyc
 __pycache__/order_manager.cpython-39.pyc
-__pycache__/telegram.cpython-39.pyc
-__pycache__/event_bus.cpython-39.pyc
-__pycache__/filter_4h.cpython-39.pyc
+__pycache__/telegram.cpython-39.pycpycache__/filter_4h.cpython-39.pyc
 __pycache__/patterns.cpython-39.pyc
 .git/index
 .git/packed-refs
