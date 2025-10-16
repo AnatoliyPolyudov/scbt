@@ -9,7 +9,7 @@ ex = ccxt.okx({
 })
 
 def fetch_candles(limit=3):
-    """Fetch candles from exchange - возвращает список вместо DataFrame"""
+    """Fetch candles from exchange - returns list instead of DataFrame"""
     try:
         ohlcv = ex.fetch_ohlcv(SYMBOL, TF, limit=limit)
         return ohlcv  # [[timestamp, open, high, low, close, volume], ...]
