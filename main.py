@@ -2,23 +2,45 @@
 import order_manager
 import time
 import threading
+import requests
+import json
 from exchange import check_connection
 from patterns import check_scob_pattern, wait_for_candle_close
 from telegram import send_startup_message, send_telegram_message, send_error_message
-from flask import Flask, request
 from callback_handler import handle_callback
+from config import TELEGRAM_BOT_TOKEN
 
-app = Flask(__name__)
+def get_updates(offset=None):
+    """Get updates from Telegram via polling"""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
+    params = {'timeout': 30, 'offset': offset}
+    try:
+        response = requests.get(url, params=params, timeout=35)
+        return response.json()
+    except:
+        return {'result': []}
 
-@app.route('/webhook', methods=['POST'])
-def telegram_webhook():
-    data = request.json
-    callback_data = data['callback_query']['data']
-    handle_callback(callback_data)
-    return 'OK'
-
-def run_flask():
-    app.run(host='0.0.0.0', port=5000)
+def process_updates():
+    """Process Telegram updates in background"""
+    last_update_id = None
+    print("Starting Telegram updates polling...")
+    
+    while True:
+        try:
+            updates = get_updates(last_update_id)
+            if updates.get('result'):
+                for update in updates['result']:
+                    if 'callback_query' in update:
+                        callback_data = update['callback_query']['data']
+                        print(f"Received callback: {callback_data}")
+                        handle_callback(callback_data)
+                    
+                    last_update_id = update['update_id'] + 1
+            
+            time.sleep(1)
+        except Exception as e:
+            print(f"Updates error: {e}")
+            time.sleep(5)
 
 def main():
     print("Starting ScoB Bot...")
@@ -31,10 +53,10 @@ def main():
     if not check_connection():
         return
     
-    # Start Flask in background thread
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    print("Web server started on port 5000")
+    # Start Telegram polling in background thread
+    polling_thread = threading.Thread(target=process_updates, daemon=True)
+    polling_thread.start()
+    print("Telegram polling started")
     
     last_signal_time = 0
     
