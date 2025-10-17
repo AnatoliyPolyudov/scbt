@@ -2,9 +2,47 @@
 # main.py
 import order_manager
 import time
+import threading
+import gc
+import requests
+import json
 from exchange import check_connection
 from patterns import check_scob_pattern, wait_for_candle_close
 from telegram import send_startup_message, send_telegram_message, send_error_message
+from callback_handler import handle_callback
+from config import TELEGRAM_BOT_TOKEN
+
+def get_updates(offset=None):
+    """Get updates from Telegram via polling"""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
+    params = {'timeout': 30, 'offset': offset}
+    try:
+        response = requests.get(url, params=params, timeout=35)
+        return response.json()
+    except:
+        return {'result': []}
+
+def process_updates():
+    """Process Telegram updates in background"""
+    last_update_id = None
+    print("Starting Telegram updates polling...")
+    
+    while True:
+        try:
+            updates = get_updates(last_update_id)
+            if updates.get('result'):
+                for update in updates['result']:
+                    if 'callback_query' in update:
+                        callback_data = update['callback_query']['data']
+                        print(f"Received callback: {callback_data}")
+                        handle_callback(callback_data)
+                    
+                    last_update_id = update['update_id'] + 1
+            
+            time.sleep(1)
+        except Exception as e:
+            print(f"Updates error: {e}")
+            time.sleep(5)
 
 def main():
     print("Starting ScoB Bot...")
@@ -16,6 +54,11 @@ def main():
     # Check exchange connection
     if not check_connection():
         return
+    
+    # Start Telegram polling in background thread
+    polling_thread = threading.Thread(target=process_updates, daemon=True)
+    polling_thread.start()
+    print("Telegram polling started")
     
     last_signal_time = 0
     
@@ -40,7 +83,8 @@ def main():
                         signal["take_profit"]
                     )
                     last_signal_time = current_time
-            
+            gc.collect()
+            time.sleep(1) 
             # Wait before next check
             time.sleep(5)
             
@@ -53,14 +97,12 @@ def main():
             time.sleep(30)
 
 if __name__ == "__main__":
-    main()
-===== ./order_manager.py =====
+    main()===== ./order_manager.py =====
 from event_bus import subscribe
 
 def handle_button_click(data):
     print("ORDER_MANAGER: Received button click:", data)
     
-    # Тестовое уведомление вместо реального ордера
     action = data.get("action")
     price = data.get("price")
     
@@ -68,6 +110,10 @@ def handle_button_click(data):
         print(f"TEST_ORDER: Would create BUY LIMIT at {price}")
     elif action == "SELL_LIMIT":
         print(f"TEST_ORDER: Would create SELL LIMIT at {price}")
+    elif action == "BUY_MARKET":
+        print("TEST_ORDER: Would create BUY MARKET (current price)")
+    elif action == "SELL_MARKET":
+        print("TEST_ORDER: Would create SELL MARKET (current price)")
 
 subscribe("BUTTON_CLICK", handle_button_click)===== ./callback_handler.py =====
 from event_bus import publish
@@ -101,7 +147,7 @@ from config import CANDLES_NEEDED
 def wait_for_candle_close():
     """Wait for current candle to close"""
     current_time = int(time.time() * 1000)
-    candle_duration = 60000  # 1 minute
+    candle_duration = 180000  # 3 minute
     next_candle_time = (current_time // candle_duration + 1) * candle_duration
     wait_time = (next_candle_time - current_time) / 1000
     if wait_time > 0:
@@ -112,26 +158,27 @@ def check_scob_pattern():
     """Check ScoB pattern on closed candles - returns signal data or None"""
     print("Analyzing candles for ScoB pattern...")
     
-    df = fetch_candles(limit=CANDLES_NEEDED)
-    if len(df) < CANDLES_NEEDED:
+    candles = fetch_candles(limit=CANDLES_NEEDED)
+    if len(candles) < CANDLES_NEEDED:
         print("Not enough candles for analysis")
         return None
     
-    # Candle 1 (oldest)
-    high1 = df["high"].iloc[-3]
-    low1 = df["low"].iloc[-3]
+    # Candle 1 (oldest) - индекс -3
+    # candles[0] = [timestamp, open, high, low, close, volume]
+    high1 = candles[-3][2]  # high
+    low1 = candles[-3][3]   # low
     
-    # Candle 2 (ScoB pattern)
-    high2 = df["high"].iloc[-2]
-    low2 = df["low"].iloc[-2]
-    close2 = df["close"].iloc[-2]
+    # Candle 2 (ScoB pattern) - индекс -2  
+    high2 = candles[-2][2]
+    low2 = candles[-2][3]
+    close2 = candles[-2][4]
     
-    # Candle 3 (confirmation - must be closed)
-    high3 = df["high"].iloc[-1]
-    low3 = df["low"].iloc[-1]
-    close3 = df["close"].iloc[-1]
+    # Candle 3 (confirmation) - индекс -1
+    high3 = candles[-1][2]
+    low3 = candles[-1][3] 
+    close3 = candles[-1][4]
     
-    time_str = datetime.fromtimestamp(df['ts'].iloc[-1] / 1000).strftime('%H:%M')
+    time_str = datetime.fromtimestamp(candles[-1][0] / 1000).strftime('%H:%M')
     
     print(f"Candles data:")
     print(f"  Candle 1: H:{high1:.2f} L:{low1:.2f}")
@@ -169,11 +216,10 @@ def check_scob_pattern():
         }
     
     print(f"No ScoB pattern found at {time_str}")
-    return None
-===== ./config.py =====
+    return None===== ./config.py =====
 # config.py
 SYMBOL = "ETH/USDT:USDT"
-TF = "1m" 
+TF = "3m" 
 CAPITAL = 1000
 RISK_PERCENT = 1
 
@@ -199,10 +245,16 @@ tp: {take_profit}
 {position_info}"""
         
         keyboard = {
-            'inline_keyboard': [[
-                {'text': 'BUY LIMIT', 'callback_data': f'BUY_LIMIT:{entry}'},
-                {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'}
-            ]]
+            'inline_keyboard': [
+                [
+                    {'text': 'BUY LIMIT', 'callback_data': f'BUY_LIMIT:{entry}'},
+                    {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'}
+                ],
+                [
+                    {'text': 'BUY MARKET', 'callback_data': 'BUY_MARKET'},
+                    {'text': 'SELL MARKET', 'callback_data': 'SELL_MARKET'}
+                ]
+            ]
         }
     else:
         message = take_profit
@@ -272,7 +324,6 @@ Position size: {size:.4f} ETH"""
 # scbt===== ./exchange.py =====
 # exchange.py
 import ccxt
-import pandas as pd
 from config import SYMBOL, TF
 
 # Exchange connection
@@ -282,14 +333,13 @@ ex = ccxt.okx({
 })
 
 def fetch_candles(limit=3):
-    """Fetch candles from exchange"""
+    """Fetch candles from exchange - returns list instead of DataFrame"""
     try:
         ohlcv = ex.fetch_ohlcv(SYMBOL, TF, limit=limit)
-        df = pd.DataFrame(ohlcv, columns=["ts","open","high","low","close","volume"])
-        return df
+        return ohlcv  # [[timestamp, open, high, low, close, volume], ...]
     except Exception as e:
         print(f"Error fetching data: {e}")
-        return pd.DataFrame()
+        return []
 
 def check_connection():
     """Check exchange connection"""
