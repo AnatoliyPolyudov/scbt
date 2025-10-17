@@ -1,6 +1,6 @@
 # config.py
 SYMBOL = "ETH/USDT:USDT"
-TF = "1m" 
+TF = "3m" 
 CAPITAL = 1000
 RISK_PERCENT = 1
 
