@@ -1,6 +1,7 @@
 # levels_monitor.py
 from exchange import ex
 from config import SYMBOL
+from telegram import send_telegram_message
 
 class LevelMonitor:
     def __init__(self):
@@ -8,22 +9,30 @@ class LevelMonitor:
         self.last_4h_low = None
         print("Level Monitor initialized")
         
-    def fetch_4h_candles(self, limit=5):
+    def fetch_4h_candles(self, limit=3):
         """Fetch recent 4H candles for analysis"""
         try:
-            ohlcv = ex.fetch_ohlcv(SYMBOL, "4h", limit=limit)
-            return ohlcv
+            return ex.fetch_ohlcv(SYMBOL, "4h", limit=limit)
         except Exception as e:
             print(f"LevelMonitor error fetching 4h data: {e}")
             return []
         
     def update_levels(self):
-        """Update high/low from the last closed 4H candle"""
+        """Update and send 4H high/low levels from the last closed candle"""
         candles = self.fetch_4h_candles(limit=3)
         if len(candles) >= 2:
             last_closed = candles[-2]  # последняя закрытая свеча
-            self.last_4h_high = last_closed[2]
-            self.last_4h_low = last_closed[3]
-            print(f"4H closed candle → High={self.last_4h_high:.2f}, Low={self.last_4h_low:.2f}")
+            high = last_closed[2]
+            low = last_closed[3]
+            
+            # 🔥 ВСЕГДА отправляем уровни при первом запуске или изменении
+            if self.last_4h_high is None or high != self.last_4h_high or low != self.last_4h_low:
+                self.last_4h_high = high
+                self.last_4h_low = low
+                message = f"📊 4H Levels Updated:\n🏔️ High: {high:.2f}\n📉 Low: {low:.2f}"
+                send_telegram_message("4H_levels", "", "", "", message)
+                print(f"LevelMonitor: {message}")
+            else:
+                print(f"LevelMonitor: 4H levels unchanged - High={high:.2f}, Low={low:.2f}")
         else:
-            print("Not enough candles to determine 4H levels")
+            print("LevelMonitor: Not enough candles to determine 4H levels")

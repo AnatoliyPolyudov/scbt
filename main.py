@@ -47,7 +47,9 @@ def process_updates():
 def monitor_levels():
     """Monitor 4H levels for breakouts"""
     monitor = LevelMonitor()
-    monitor.update_levels()  # Первоначальная установка уровней
+    monitor.update_levels()  # 🔥 Теперь отправит уровни в Telegram
+    
+    print("Level monitor started - tracking 4H breakouts")
     
     while True:
         try:
@@ -56,15 +58,14 @@ def monitor_levels():
             current_price = ticker["last"]
             
             if monitor.last_4h_high and current_price > monitor.last_4h_high:
-                send_telegram_message("", "", "", "", f"BREAKOUT: Price {current_price} > 4H High {monitor.last_4h_high}")
-                # Обновляем уровни после пробоя
-                monitor.update_levels()
+                send_telegram_message("", "", "", "", f"🚀 BREAKOUT UP: Price {current_price} > 4H High {monitor.last_4h_high}")
+                monitor.update_levels()  # Обновляем после пробоя
             
             elif monitor.last_4h_low and current_price < monitor.last_4h_low:
-                send_telegram_message("", "", "", "", f"BREAKOUT: Price {current_price} < 4H Low {monitor.last_4h_low}")
-                monitor.update_levels()
+                send_telegram_message("", "", "", "", f"📉 BREAKOUT DOWN: Price {current_price} < 4H Low {monitor.last_4h_low}")
+                monitor.update_levels()  # Обновляем после пробоя
             
-            time.sleep(30)  # Проверка каждые 30 секунд
+            time.sleep(30)
             
         except Exception as e:
             print(f"Level monitor error: {e}")
