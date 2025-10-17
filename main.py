@@ -47,7 +47,11 @@ def process_updates():
 def monitor_levels():
     """Monitor 4H levels for breakouts"""
     monitor = LevelMonitor()
-    monitor.update_levels()  # 🔥 Теперь отправит уровни в Telegram
+    monitor.update_levels(send_message=True)
+    
+    # 🔥 Флаги для отслеживания уже пробитых уровней
+    high_breakout_reported = False
+    low_breakout_reported = False
     
     print("Level monitor started - tracking 4H breakouts")
     
@@ -58,12 +62,23 @@ def monitor_levels():
             current_price = ticker["last"]
             
             if monitor.last_4h_high and current_price > monitor.last_4h_high:
-                send_telegram_message("", "", "", "", f"🚀 BREAKOUT UP: Price {current_price} > 4H High {monitor.last_4h_high}")
-                monitor.update_levels()  # Обновляем после пробоя
+                if not high_breakout_reported:
+                    send_telegram_message("", "", "", "", f"🚀 BREAKOUT UP: Price {current_price} > 4H High {monitor.last_4h_high}")
+                    high_breakout_reported = True
+                    low_breakout_reported = False  # Сбрасываем флаг противоположного пробоя
+                    monitor.update_levels(send_message=False)
             
             elif monitor.last_4h_low and current_price < monitor.last_4h_low:
-                send_telegram_message("", "", "", "", f"📉 BREAKOUT DOWN: Price {current_price} < 4H Low {monitor.last_4h_low}")
-                monitor.update_levels()  # Обновляем после пробоя
+                if not low_breakout_reported:
+                    send_telegram_message("", "", "", "", f"📉 BREAKOUT DOWN: Price {current_price} < 4H Low {monitor.last_4h_low}")
+                    low_breakout_reported = True
+                    high_breakout_reported = False  # Сбрасываем флаг противоположного пробоя
+                    monitor.update_levels(send_message=False)
+            
+            else:
+                # 🔥 Если цена вернулась в диапазон - сбрасываем флаги
+                high_breakout_reported = False
+                low_breakout_reported = False
             
             time.sleep(30)
             
