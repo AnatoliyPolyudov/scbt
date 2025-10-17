@@ -15,10 +15,16 @@ tp: {take_profit}
 {position_info}"""
         
         keyboard = {
-            'inline_keyboard': [[
-                {'text': 'BUY LIMIT', 'callback_data': f'BUY_LIMIT:{entry}'},
-                {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'}
-            ]]
+            'inline_keyboard': [
+                [
+                    {'text': 'BUY LIMIT', 'callback_data': f'BUY_LIMIT:{entry}'},
+                    {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'}
+                ],
+                [
+                    {'text': 'BUY MARKET', 'callback_data': 'BUY_MARKET'},
+                    {'text': 'SELL MARKET', 'callback_data': 'SELL_MARKET'}
+                ]
+            ]
         }
     else:
         message = take_profit
