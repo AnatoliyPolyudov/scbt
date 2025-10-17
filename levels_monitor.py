@@ -8,8 +8,8 @@ class LevelMonitor:
         self.last_4h_low = None
         print("Level Monitor initialized")
         
-    def fetch_4h_candles(self, limit=10):
-        """Fetch 4H candles for level analysis"""
+    def fetch_4h_candles(self, limit=5):
+        """Fetch recent 4H candles for analysis"""
         try:
             ohlcv = ex.fetch_ohlcv(SYMBOL, "4h", limit=limit)
             return ohlcv
@@ -18,12 +18,12 @@ class LevelMonitor:
             return []
         
     def update_levels(self):
-        """Update 4H high/low levels from last 10 candles"""
-        candles = self.fetch_4h_candles(limit=10)
+        """Update high/low from the last closed 4H candle"""
+        candles = self.fetch_4h_candles(limit=3)
         if len(candles) >= 2:
-            highs = [c[2] for c in candles[:-1]]
-            lows = [c[3] for c in candles[:-1]]
-            
-            self.last_4h_high = max(highs)
-            self.last_4h_low = min(lows)
-            print(f"4H High={self.last_4h_high:.2f}, Low={self.last_4h_low:.2f}")
+            last_closed = candles[-2]  # последняя закрытая свеча
+            self.last_4h_high = last_closed[2]
+            self.last_4h_low = last_closed[3]
+            print(f"4H closed candle → High={self.last_4h_high:.2f}, Low={self.last_4h_low:.2f}")
+        else:
+            print("Not enough candles to determine 4H levels")
