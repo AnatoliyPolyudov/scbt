@@ -56,12 +56,12 @@ def monitor_levels():
             current_price = ticker["last"]
             
             if monitor.last_4h_high and current_price > monitor.last_4h_high:
-                send_telegram_message("", "", "", "", f"🚀 BREAKOUT: Price {current_price} > 4H High {monitor.last_4h_high}")
+                send_telegram_message("", "", "", "", f"BREAKOUT: Price {current_price} > 4H High {monitor.last_4h_high}")
                 # Обновляем уровни после пробоя
                 monitor.update_levels()
             
             elif monitor.last_4h_low and current_price < monitor.last_4h_low:
-                send_telegram_message("", "", "", "", f"📉 BREAKOUT: Price {current_price} < 4H Low {monitor.last_4h_low}")
+                send_telegram_message("", "", "", "", f"BREAKOUT: Price {current_price} < 4H Low {monitor.last_4h_low}")
                 monitor.update_levels()
             
             time.sleep(30)  # Проверка каждые 30 секунд
