@@ -7,7 +7,7 @@ from config import CANDLES_NEEDED
 def wait_for_candle_close():
     """Wait for current candle to close"""
     current_time = int(time.time() * 1000)
-    candle_duration = 180000  # 3 minute
+    candle_duration = 300000  # 5 minute
     next_candle_time = (current_time // candle_duration + 1) * candle_duration
     wait_time = (next_candle_time - current_time) / 1000
     if wait_time > 0:

@@ -48,7 +48,11 @@ def process_updates():
 def monitor_levels():
     """Monitor 4H levels for breakouts"""
     monitor = LevelMonitor()
-    monitor.update_levels()  # 🔥 Теперь отправит уровни в Telegram
+    monitor.update_levels(send_message=True)
+    
+    # 🔥 Флаги для отслеживания уже пробитых уровней
+    high_breakout_reported = False
+    low_breakout_reported = False
     
     print("Level monitor started - tracking 4H breakouts")
     
@@ -59,12 +63,23 @@ def monitor_levels():
             current_price = ticker["last"]
             
             if monitor.last_4h_high and current_price > monitor.last_4h_high:
-                send_telegram_message("", "", "", "", f"🚀 BREAKOUT UP: Price {current_price} > 4H High {monitor.last_4h_high}")
-                monitor.update_levels()  # Обновляем после пробоя
+                if not high_breakout_reported:
+                    send_telegram_message("", "", "", "", f"🚀 BREAKOUT UP: Price {current_price} > 4H High {monitor.last_4h_high}")
+                    high_breakout_reported = True
+                    low_breakout_reported = False  # Сбрасываем флаг противоположного пробоя
+                    monitor.update_levels(send_message=False)
             
             elif monitor.last_4h_low and current_price < monitor.last_4h_low:
-                send_telegram_message("", "", "", "", f"📉 BREAKOUT DOWN: Price {current_price} < 4H Low {monitor.last_4h_low}")
-                monitor.update_levels()  # Обновляем после пробоя
+                if not low_breakout_reported:
+                    send_telegram_message("", "", "", "", f"📉 BREAKOUT DOWN: Price {current_price} < 4H Low {monitor.last_4h_low}")
+                    low_breakout_reported = True
+                    high_breakout_reported = False  # Сбрасываем флаг противоположного пробоя
+                    monitor.update_levels(send_message=False)
+            
+            else:
+                # 🔥 Если цена вернулась в диапазон - сбрасываем флаги
+                high_breakout_reported = False
+                low_breakout_reported = False
             
             time.sleep(30)
             
@@ -132,7 +147,8 @@ def main():
             time.sleep(30)
 
 if __name__ == "__main__":
-    main()===== ./levels_monitor.py =====
+    main()
+===== ./levels_monitor.py =====
 # levels_monitor.py
 from exchange import ex
 from config import SYMBOL
@@ -152,25 +168,30 @@ class LevelMonitor:
             print(f"LevelMonitor error fetching 4h data: {e}")
             return []
         
-    def update_levels(self):
-        """Update and send 4H high/low levels from the last closed candle"""
+    def update_levels(self, send_message=True):
+        """Update 4H high/low levels from the last closed candle"""
         candles = self.fetch_4h_candles(limit=3)
         if len(candles) >= 2:
             last_closed = candles[-2]  # последняя закрытая свеча
             high = last_closed[2]
             low = last_closed[3]
             
-            # 🔥 ВСЕГДА отправляем уровни при первом запуске или изменении
+            # 🔥 Отправляем сообщение ТОЛЬКО если уровни изменились И send_message=True
             if self.last_4h_high is None or high != self.last_4h_high or low != self.last_4h_low:
                 self.last_4h_high = high
                 self.last_4h_low = low
-                message = f"📊 4H Levels Updated:\n🏔️ High: {high:.2f}\n📉 Low: {low:.2f}"
-                send_telegram_message("4H_levels", "", "", "", message)
-                print(f"LevelMonitor: {message}")
+                
+                if send_message:
+                    message = f"📊 4H Levels Updated:\n🏔️ High: {high:.2f}\n📉 Low: {low:.2f}"
+                    send_telegram_message("4H_levels", "", "", "", message)
+                    print(f"LevelMonitor: {message}")
+                else:
+                    print(f"LevelMonitor: Levels updated silently - High={high:.2f}, Low={low:.2f}")
             else:
                 print(f"LevelMonitor: 4H levels unchanged - High={high:.2f}, Low={low:.2f}")
         else:
-            print("LevelMonitor: Not enough candles to determine 4H levels")===== ./order_manager.py =====
+            print("LevelMonitor: Not enough candles to determine 4H levels")
+===== ./order_manager.py =====
 from event_bus import subscribe
 
 def handle_button_click(data):
@@ -211,7 +232,7 @@ from config import CANDLES_NEEDED
 def wait_for_candle_close():
     """Wait for current candle to close"""
     current_time = int(time.time() * 1000)
-    candle_duration = 180000  # 3 minute
+    candle_duration = 300000  # 5 minute
     next_candle_time = (current_time // candle_duration + 1) * candle_duration
     wait_time = (next_candle_time - current_time) / 1000
     if wait_time > 0:
@@ -280,10 +301,11 @@ def check_scob_pattern():
         }
     
     print(f"No ScoB pattern found at {time_str}")
-    return None===== ./config.py =====
+    return None
+===== ./config.py =====
 # config.py
 SYMBOL = "ETH/USDT:USDT"
-TF = "3m" 
+TF = "5m" 
 CAPITAL = 1000
 RISK_PERCENT = 1
 
