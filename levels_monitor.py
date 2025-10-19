@@ -50,7 +50,7 @@ class LevelMonitor:
             self.last_4h_low = low
             self.last_closed_ts = ts_close
             if send_message:
-                message = f"📊 4H Levels Updated:\n🏔️ High: {high:.2f}\n📉 Low: {low:.2f}"
+                message = f"4H Levels Updated:\nHigh: {high:.2f}\nLow: {low:.2f}"
                 send_telegram_message("4H_levels", "", "", "", message)
                 print(f"LevelMonitor: {message}")
         else:
