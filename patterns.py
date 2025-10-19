@@ -1,14 +1,15 @@
 # patterns.py
 import time
 from datetime import datetime
-from exchange import fetch_candles, ex, SYMBOL
+from exchange import fetch_candles, SYMBOL
 from config import CANDLES_NEEDED
-import statistics
+import numpy as np
+import talib
 
 def wait_for_candle_close():
     """Wait for current candle to close"""
     current_time = int(time.time() * 1000)
-    candle_duration = 300000  # 5 minute
+    candle_duration = 300000  # 5 minutes in ms
     next_candle_time = (current_time // candle_duration + 1) * candle_duration
     wait_time = (next_candle_time - current_time) / 1000
     if wait_time > 0:
@@ -18,43 +19,32 @@ def wait_for_candle_close():
 def check_scob_pattern():
     """Check ScoB pattern on closed candles - returns signal data or None"""
     print("Analyzing candles for ScoB pattern...")
-    
-    candles = fetch_candles(limit=CANDLES_NEEDED)
-    if len(candles) < CANDLES_NEEDED:
+
+    candles = fetch_candles(limit=CANDLES_NEEDED + 20)  # для ATR нужно больше свечей
+    if len(candles) < CANDLES_NEEDED + 20:
         print("Not enough candles for analysis")
         return None
 
-    # === ATR фильтр ===
-    atr_candles = ex.fetch_ohlcv(SYMBOL, "5m", limit=20)
-    trs = []
-    for i in range(1, len(atr_candles)):
-        high = atr_candles[i][2]
-        low = atr_candles[i][3]
-        prev_close = atr_candles[i - 1][4]
-        tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
-        trs.append(tr)
-    atr = statistics.mean(trs)
+    # Подготовка массивов для TA-Lib
+    highs = np.array([c[2] for c in candles], dtype=float)
+    lows = np.array([c[3] for c in candles], dtype=float)
+    closes = np.array([c[4] for c in candles], dtype=float)
 
-    # Candle 1 (oldest) - индекс -3
-    high1 = candles[-3][2]
-    low1 = candles[-3][3]
+    # Расчёт ATR через TA-Lib
+    atr = talib.ATR(highs, lows, closes, timeperiod=14)[-1]
+    if np.isnan(atr):
+        print("ATR calculation failed")
+        return None
 
-    # Candle 2 (ScoB pattern) - индекс -2  
-    high2 = candles[-2][2]
-    low2 = candles[-2][3]
-    close2 = candles[-2][4]
+    # Последние три свечи для паттерна
+    c1, c2, c3 = candles[-3], candles[-2], candles[-1]
 
-    # Candle 3 (confirmation) - индекс -1
-    high3 = candles[-1][2]
-    low3 = candles[-1][3] 
-    close3 = candles[-1][4]
+    high1, low1 = c1[2], c1[3]
+    high2, low2, close2 = c2[2], c2[3], c2[4]
+    high3, low3, close3 = c3[2], c3[3], c3[4]
 
-    time_str = datetime.fromtimestamp(candles[-1][0] / 1000).strftime('%H:%M')
-
-    print(f"Candles data:")
-    print(f"  Candle 1: H:{high1:.2f} L:{low1:.2f}")
-    print(f"  Candle 2: H:{high2:.2f} L:{low2:.2f} C:{close2:.2f}")
-    print(f"  Candle 3: H:{high3:.2f} L:{low3:.2f} C:{close3:.2f}")
+    time_str = datetime.fromtimestamp(c3[0] / 1000).strftime('%H:%M')
+    print(f"Candles data:\n  Candle1 H:{high1:.2f} L:{low1:.2f}\n  Candle2 H:{high2:.2f} L:{low2:.2f} C:{close2:.2f}\n  Candle3 H:{high3:.2f} L:{low3:.2f} C:{close3:.2f}")
 
     # ATR фильтр: пропускаем слабые свечи
     candle_range = high2 - low2
@@ -63,11 +53,11 @@ def check_scob_pattern():
         return None
 
     # LONG: ScoB down + close above high2
-    if (low2 < low1 and close2 > low1 and close3 > high2):
+    if low2 < low1 and close2 > low1 and close3 > high2:
         entry = high2
-        stop_loss = entry - 1.5 * atr  # адаптивный стоп
+        stop_loss = entry - 1.5 * atr
         risk = entry - stop_loss
-        take_profit = entry + (risk * 2)
+        take_profit = entry + risk * 2
         print(f"ScoB LONG pattern detected at {time_str}")
         return {
             "title": "long",
@@ -77,12 +67,12 @@ def check_scob_pattern():
             "take_profit": round(take_profit, 2),
         }
 
-    # SHORT: ScoB up + close below low2  
-    elif (high2 > high1 and close2 < high1 and close3 < low2):
+    # SHORT: ScoB up + close below low2
+    elif high2 > high1 and close2 < high1 and close3 < low2:
         entry = low2
-        stop_loss = entry + 1.5 * atr  # адаптивный стоп
+        stop_loss = entry + 1.5 * atr
         risk = stop_loss - entry
-        take_profit = entry - (risk * 2)
+        take_profit = entry - risk * 2
         print(f"ScoB SHORT pattern detected at {time_str}")
         return {
             "title": "short",
