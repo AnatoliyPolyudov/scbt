@@ -4,12 +4,11 @@ import time
 import threading
 import gc
 import requests
-import json
-from exchange import check_connection, ex
+from exchange import check_connection
 from patterns import check_scob_pattern, wait_for_candle_close
 from telegram import send_startup_message, send_telegram_message, send_error_message
 from callback_handler import handle_callback
-from config import TELEGRAM_BOT_TOKEN, SYMBOL
+from config import TELEGRAM_BOT_TOKEN
 
 def get_updates(offset=None):
     """Get updates from Telegram via polling"""
@@ -36,7 +35,6 @@ def process_updates():
                         print(f"Received callback: {callback_data}")
                         handle_callback(callback_data)
                     last_update_id = update['update_id'] + 1
-
             time.sleep(1)
         except Exception as e:
             print(f"Updates error: {e}")
@@ -60,18 +58,19 @@ def main():
     while True:
         try:
             wait_for_candle_close()
-            signal = check_scob_pattern()
+            signals = check_scob_pattern()  # возвращает список сигналов
 
-            if signal:
+            if signals:
                 current_time = int(time.time() * 1000)
                 if current_time - last_signal_time > 60000:
-                    send_telegram_message(
-                        signal["title"],
-                        signal["time"],
-                        signal["entry"],
-                        signal["stop_loss"],
-                        signal["take_profit"]
-                    )
+                    for signal in signals:
+                        send_telegram_message(
+                            signal["title"],       # "long (ATR)" или "short (no ATR)"
+                            signal["time"],
+                            signal["entry"],
+                            signal["stop_loss"],
+                            signal["take_profit"]
+                        )
                     last_signal_time = current_time
 
             gc.collect()

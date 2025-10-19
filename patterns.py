@@ -7,9 +7,8 @@ import numpy as np
 import talib
 
 def wait_for_candle_close():
-    """Wait until the current 5m candle closes"""
     current_time = int(time.time() * 1000)
-    candle_duration = 300000  # 5 minutes in ms
+    candle_duration = 300000  # 5 minutes
     next_candle_time = (current_time // candle_duration + 1) * candle_duration
     wait_time = (next_candle_time - current_time) / 1000
     if wait_time > 0:
@@ -17,68 +16,88 @@ def wait_for_candle_close():
         time.sleep(wait_time)
 
 def check_scob_pattern():
-    """Detect Single Candle Order Block (ScoB) pattern"""
+    """Detect ScoB pattern with ATR and without ATR"""
     print("Analyzing candles for ScoB pattern...")
 
-    candles = fetch_candles(limit=CANDLES_NEEDED + 20)  # extra candles for ATR
+    candles = fetch_candles(limit=CANDLES_NEEDED + 20)
     if len(candles) < CANDLES_NEEDED + 20:
         print("Not enough candles for analysis")
-        return None
+        return []
 
-    # Prepare data for TA-Lib
     highs = np.array([c[2] for c in candles], dtype=float)
     lows = np.array([c[3] for c in candles], dtype=float)
     closes = np.array([c[4] for c in candles], dtype=float)
 
-    # ATR calculation
+    # ATR
     atr = talib.ATR(highs, lows, closes, timeperiod=14)[-1]
     if np.isnan(atr):
-        print("ATR calculation failed")
-        return None
+        atr = None
 
-    # Last 3 candles
     c1, c2, c3 = candles[-3], candles[-2], candles[-1]
-
     high1, low1 = c1[2], c1[3]
     high2, low2, close2 = c2[2], c2[3], c2[4]
     high3, low3, close3 = c3[2], c3[3], c3[4]
 
     time_str = datetime.fromtimestamp(c3[0] / 1000).strftime('%H:%M')
-    print(f"Candles data:\n  C1 H:{high1:.2f} L:{low1:.2f}\n  C2 H:{high2:.2f} L:{low2:.2f} C:{close2:.2f}\n  C3 H:{high3:.2f} L:{low3:.2f} C:{close3:.2f}")
+    signals = []
 
-    # ATR filter check
-    candle_range = high2 - low2
-    atr_ok = candle_range >= atr * 0.7
-
-    # LONG: ScoB down + close above high2
+    # LONG pattern
     if low2 < low1 and close2 > low1 and close3 > high2:
         entry = high2
-        stop_loss = entry - 1.5 * atr
-        risk = entry - stop_loss
-        take_profit = entry + risk * 2
-        print(f"ScoB LONG pattern detected at {time_str} (ATR ok: {atr_ok})")
-        return {
-            "title": f"long ({'ATR' if atr_ok else 'no ATR'})",
+        stop_loss_default = low2  # обычный стоп
+        take_profit_default = entry + (entry - stop_loss_default) * 2
+
+        # без ATR
+        signals.append({
+            "title": "long (no ATR)",
             "time": time_str,
             "entry": round(entry, 2),
-            "stop_loss": round(stop_loss, 2),
-            "take_profit": round(take_profit, 2),
-        }
+            "stop_loss": round(stop_loss_default, 2),
+            "take_profit": round(take_profit_default, 2)
+        })
 
-    # SHORT: ScoB up + close below low2
+        # с ATR
+        if atr:
+            stop_loss_atr = entry - 1.5 * atr
+            take_profit_atr = entry + (entry - stop_loss_atr) * 2
+            signals.append({
+                "title": "long (ATR)",
+                "time": time_str,
+                "entry": round(entry, 2),
+                "stop_loss": round(stop_loss_atr, 2),
+                "take_profit": round(take_profit_atr, 2)
+            })
+
+    # SHORT pattern
     elif high2 > high1 and close2 < high1 and close3 < low2:
         entry = low2
-        stop_loss = entry + 1.5 * atr
-        risk = stop_loss - entry
-        take_profit = entry - risk * 2
-        print(f"ScoB SHORT pattern detected at {time_str} (ATR ok: {atr_ok})")
-        return {
-            "title": f"short ({'ATR' if atr_ok else 'no ATR'})",
+        stop_loss_default = high2
+        take_profit_default = entry - (stop_loss_default - entry) * 2
+
+        # без ATR
+        signals.append({
+            "title": "short (no ATR)",
             "time": time_str,
             "entry": round(entry, 2),
-            "stop_loss": round(stop_loss, 2),
-            "take_profit": round(take_profit, 2),
-        }
+            "stop_loss": round(stop_loss_default, 2),
+            "take_profit": round(take_profit_default, 2)
+        })
 
-    print(f"No ScoB pattern found at {time_str}")
-    return None
+        # с ATR
+        if atr:
+            stop_loss_atr = entry + 1.5 * atr
+            take_profit_atr = entry - (stop_loss_atr - entry) * 2
+            signals.append({
+                "title": "short (ATR)",
+                "time": time_str,
+                "entry": round(entry, 2),
+                "stop_loss": round(stop_loss_atr, 2),
+                "take_profit": round(take_profit_atr, 2)
+            })
+
+    if signals:
+        print(f"Signals detected at {time_str}: {[s['title'] for s in signals]}")
+    else:
+        print(f"No ScoB pattern found at {time_str}")
+
+    return signals
