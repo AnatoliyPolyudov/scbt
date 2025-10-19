@@ -27,7 +27,7 @@ def process_updates():
     """Process Telegram updates in background"""
     last_update_id = None
     print("Starting Telegram updates polling...")
-    
+
     while True:
         try:
             updates = get_updates(last_update_id)
@@ -37,9 +37,8 @@ def process_updates():
                         callback_data = update['callback_query']['data']
                         print(f"Received callback: {callback_data}")
                         handle_callback(callback_data)
-                    
                     last_update_id = update['update_id'] + 1
-            
+
             time.sleep(1)
         except Exception as e:
             print(f"Updates error: {e}")
@@ -49,66 +48,63 @@ def monitor_levels():
     """Monitor 4H levels for breakouts"""
     monitor = LevelMonitor()
     monitor.update_levels(send_message=True)
-    
-    # 🔥 Улучшенная логика отслеживания пробоев
+
     current_high_level = monitor.last_4h_high
     current_low_level = monitor.last_4h_low
     high_breakout_reported = False
     low_breakout_reported = False
-    
+    last_high_msg = 0
+    last_low_msg = 0
+    MIN_MSG_INTERVAL = 300  # 5 минут
+
     print("Level monitor started - tracking 4H breakouts")
-    
+
     while True:
         try:
-            # Обновляем уровни каждые 5 минут для актуальности
             current_time = time.time()
-            if current_time % 300 < 30:  # Каждые 5 минут
+            # Обновляем уровни каждые 5 минут
+            if current_time % 300 < 30:
                 old_high = current_high_level
                 old_low = current_low_level
-                monitor.update_levels(send_message=False)
-                current_high_level = monitor.last_4h_high
-                current_low_level = monitor.last_4h_low
-                
-                # 🔥 Если уровни изменились - сбрасываем флаги пробоев
-                if current_high_level != old_high or current_low_level != old_low:
-                    print(f"Levels updated - resetting breakout flags. New levels: H={current_high_level:.2f}, L={current_low_level:.2f}")
+                if monitor.update_levels(send_message=False):
+                    current_high_level = monitor.last_4h_high
+                    current_low_level = monitor.last_4h_low
                     high_breakout_reported = False
                     low_breakout_reported = False
-            
-            # Проверяем пробои каждые 30 секунд
+
             ticker = ex.fetch_ticker(SYMBOL)
             current_price = ticker["last"]
-            
-            # 🔥 Логика пробоя верхнего уровня
+
+            # Проверка пробоя верхнего уровня
             if current_high_level and current_price > current_high_level:
-                if not high_breakout_reported:
-                    message = f"🚀 BREAKOUT UP: Price {current_price:.2f} > 4H High {current_high_level:.2f}"
+                if not high_breakout_reported or (time.time() - last_high_msg > MIN_MSG_INTERVAL):
+                    message = f"High break {current_high_level:.2f}"
                     send_telegram_message("", "", "", "", message)
                     print(f"LevelMonitor: {message}")
                     high_breakout_reported = True
-                    # При пробое вверх сбрасываем флаг пробоя вниз
+                    last_high_msg = time.time()
                     low_breakout_reported = False
-            
-            # 🔥 Логика пробоя нижнего уровня
+
+            # Проверка пробоя нижнего уровня
             elif current_low_level and current_price < current_low_level:
-                if not low_breakout_reported:
-                    message = f"📉 BREAKOUT DOWN: Price {current_price:.2f} < 4H Low {current_low_level:.2f}"
+                if not low_breakout_reported or (time.time() - last_low_msg > MIN_MSG_INTERVAL):
+                    message = f"Low break: {current_low_level:.2f}"
                     send_telegram_message("", "", "", "", message)
                     print(f"LevelMonitor: {message}")
                     low_breakout_reported = True
-                    # При пробое вниз сбрасываем флаг пробоя вверх
+                    last_low_msg = time.time()
                     high_breakout_reported = False
-            
-            # 🔥 Логика возврата в диапазон (сброс флагов при возврате между уровнями)
+
+            # Сброс флагов при возврате цены в диапазон
             elif current_high_level and current_low_level:
                 if current_low_level <= current_price <= current_high_level:
                     if high_breakout_reported or low_breakout_reported:
                         print(f"LevelMonitor: Price returned to range {current_low_level:.2f} - {current_high_level:.2f}, resetting breakout flags")
                         high_breakout_reported = False
                         low_breakout_reported = False
-            
+
             time.sleep(30)
-            
+
         except Exception as e:
             print(f"Level monitor error: {e}")
             time.sleep(60)
@@ -116,54 +112,42 @@ def monitor_levels():
 def main():
     print("Starting ScoB Bot...")
     print("Monitoring patterns...")
-    
-    # Send startup message
+
     send_startup_message()
-    
-    # Check exchange connection
+
     if not check_connection():
         return
-    
-    # Start Telegram polling in background thread
+
     polling_thread = threading.Thread(target=process_updates, daemon=True)
     polling_thread.start()
     print("Telegram polling started")
-    
-    # Start Level Monitor in background thread
+
     level_thread = threading.Thread(target=monitor_levels, daemon=True)
     level_thread.start()
     print("Level monitor started")
-    
+
     last_signal_time = 0
-    
+
     while True:
         try:
-            # Wait for candle close
             wait_for_candle_close()
-            
-            # Check for patterns
             signal = check_scob_pattern()
-            
-            # Send signal if found
+
             if signal:
                 current_time = int(time.time() * 1000)
-                # Prevent duplicate signals
                 if current_time - last_signal_time > 60000:
                     send_telegram_message(
                         signal["title"],
-                        signal["time"], 
+                        signal["time"],
                         signal["entry"],
                         signal["stop_loss"],
                         signal["take_profit"]
                     )
                     last_signal_time = current_time
-                    
+
             gc.collect()
-            time.sleep(1)
-            
-            # Wait before next check
-            time.sleep(5)
-            
+            time.sleep(6)
+
         except KeyboardInterrupt:
             print("Bot stopped manually")
             break
@@ -184,10 +168,8 @@ class LevelMonitor:
     def __init__(self):
         self.last_4h_high = None
         self.last_4h_low = None
-
         self.last_update_time = 0
         self.last_closed_ts = None
-
         print("Level Monitor initialized")
 
     def fetch_4h_candles(self, limit=10):
@@ -199,29 +181,27 @@ class LevelMonitor:
             return []
 
     def update_levels(self, send_message=True):
-
         """Update 4H high/low levels from the last closed candle"""
         current_time = time.time()
-        
-        # 🔥 Обновляем уровни не чаще чем раз в 4 часа
+
+        # Не чаще чем раз в 4 часа
         if current_time - self.last_update_time < 14400 and self.last_4h_high is not None:
             print(f"LevelMonitor: Levels updated recently, skipping. Next update in {14400 - (current_time - self.last_update_time):.0f} seconds")
             return False
-            
+
         candles = self.fetch_4h_candles(limit=3)
         if len(candles) >= 2:
-            last_closed = candles[-2]  # последняя закрытая свеча
+            last_closed = candles[-2]
             high = last_closed[2]
             low = last_closed[3]
-            
-            # 🔥 Отправляем сообщение ТОЛЬКО если уровни изменились И send_message=True
+
             if self.last_4h_high is None or high != self.last_4h_high or low != self.last_4h_low:
                 self.last_4h_high = high
                 self.last_4h_low = low
                 self.last_update_time = current_time
-                
+
                 if send_message:
-                    message = f"📊 4H Levels Updated:\n🏔️ High: {high:.2f}\n📉 Low: {low:.2f}"
+                    message = f"Levels updated High {high:.2f}, Low {low:.2f}"
                     send_telegram_message("4H_levels", "", "", "", message)
                     print(f"LevelMonitor: {message}")
                 else:
@@ -234,42 +214,73 @@ class LevelMonitor:
         else:
             print("LevelMonitor: Not enough candles to determine 4H levels")
             return False
-        """Update levels based on last fully closed 4H candle"""
-        candles = self.fetch_4h_candles(limit=10)
-        if not candles:
-            print("LevelMonitor: No candles fetched")
-            return
 
-        # Берём последнюю полностью закрытую свечу
-        # timestamp каждой свечи возвращается в мс
-        current_ts = int(time.time() * 1000)
-        last_closed = None
-        for candle in reversed(candles):
-            ts_open = candle[0]
-            ts_close = ts_open + 4 * 60 * 60 * 1000  # 4h в мс
-            if ts_close <= current_ts:
-                last_closed = candle
-                break
 
-        if last_closed is None:
-            print("LevelMonitor: No fully closed 4H candle yet")
-            return
+def monitor_levels():
+    """Monitor 4H levels for breakouts"""
+    monitor = LevelMonitor()
+    monitor.update_levels(send_message=True)
 
-        high = last_closed[2]
-        low = last_closed[3]
-        ts_close = last_closed[0] + 4*60*60*1000
+    current_high_level = monitor.last_4h_high
+    current_low_level = monitor.last_4h_low
+    high_breakout_reported = False
+    low_breakout_reported = False
+    last_high_msg = 0
+    last_low_msg = 0
+    MIN_MSG_INTERVAL = 300  # 5 минут между сообщениями
 
-        # Проверяем, обновились ли уровни
-        if self.last_closed_ts != ts_close or self.last_4h_high != high or self.last_4h_low != low:
-            self.last_4h_high = high
-            self.last_4h_low = low
-            self.last_closed_ts = ts_close
-            if send_message:
-                message = f"4H Levels Updated:\nHigh: {high:.2f}\nLow: {low:.2f}"
-                send_telegram_message("4H_levels", "", "", "", message)
-                print(f"LevelMonitor: {message}")
-        else:
-            print(f"LevelMonitor: Levels unchanged - High={high:.2f}, Low={low:.2f}")
+    print("Level monitor started - tracking 4H breakouts")
+
+    while True:
+        try:
+            current_time = time.time()
+            # Обновляем уровни каждые 5 минут
+            if current_time % 300 < 30:
+                old_high = current_high_level
+                old_low = current_low_level
+                if monitor.update_levels(send_message=False):
+                    current_high_level = monitor.last_4h_high
+                    current_low_level = monitor.last_4h_low
+                    high_breakout_reported = False
+                    low_breakout_reported = False
+                    print(f"Levels updated: High={current_high_level:.2f}, Low={current_low_level:.2f}")
+
+            ticker = ex.fetch_ticker(SYMBOL)
+            current_price = ticker["last"]
+
+            # Проверка пробоя верхнего уровня
+            if current_high_level and current_price > current_high_level:
+                if not high_breakout_reported or (time.time() - last_high_msg > MIN_MSG_INTERVAL):
+                    message = f"High break {current_high_level:.2f}"
+                    send_telegram_message("", "", "", "", message)
+                    print(f"LevelMonitor: {message}")
+                    high_breakout_reported = True
+                    last_high_msg = time.time()
+                    low_breakout_reported = False
+
+            # Проверка пробоя нижнего уровня
+            elif current_low_level and current_price < current_low_level:
+                if not low_breakout_reported or (time.time() - last_low_msg > MIN_MSG_INTERVAL):
+                    message = f"Low break {current_low_level:.2f}"
+                    send_telegram_message("", "", "", "", message)
+                    print(f"LevelMonitor: {message}")
+                    low_breakout_reported = True
+                    last_low_msg = time.time()
+                    high_breakout_reported = False
+
+            # Сброс флагов, если цена вернулась в диапазон
+            elif current_high_level and current_low_level:
+                if current_low_level <= current_price <= current_high_level:
+                    if high_breakout_reported or low_breakout_reported:
+                        print(f"LevelMonitor: Price returned to range {current_low_level:.2f} - {current_high_level:.2f}, resetting breakout flags")
+                        high_breakout_reported = False
+                        low_breakout_reported = False
+
+            time.sleep(30)
+
+        except Exception as e:
+            print(f"Level monitor error: {e}")
+            time.sleep(60)
 ===== ./order_manager.py =====
 from event_bus import subscribe
 
@@ -305,8 +316,9 @@ def handle_callback(query_data):
 # patterns.py
 import time
 from datetime import datetime
-from exchange import fetch_candles
+from exchange import fetch_candles, ex, SYMBOL
 from config import CANDLES_NEEDED
+import statistics
 
 def wait_for_candle_close():
     """Wait for current candle to close"""
@@ -326,33 +338,49 @@ def check_scob_pattern():
     if len(candles) < CANDLES_NEEDED:
         print("Not enough candles for analysis")
         return None
-    
+
+    # === ATR фильтр ===
+    atr_candles = ex.fetch_ohlcv(SYMBOL, "5m", limit=20)
+    trs = []
+    for i in range(1, len(atr_candles)):
+        high = atr_candles[i][2]
+        low = atr_candles[i][3]
+        prev_close = atr_candles[i - 1][4]
+        tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
+        trs.append(tr)
+    atr = statistics.mean(trs)
+
     # Candle 1 (oldest) - индекс -3
-    # candles[0] = [timestamp, open, high, low, close, volume]
-    high1 = candles[-3][2]  # high
-    low1 = candles[-3][3]   # low
-    
+    high1 = candles[-3][2]
+    low1 = candles[-3][3]
+
     # Candle 2 (ScoB pattern) - индекс -2  
     high2 = candles[-2][2]
     low2 = candles[-2][3]
     close2 = candles[-2][4]
-    
+
     # Candle 3 (confirmation) - индекс -1
     high3 = candles[-1][2]
     low3 = candles[-1][3] 
     close3 = candles[-1][4]
-    
+
     time_str = datetime.fromtimestamp(candles[-1][0] / 1000).strftime('%H:%M')
-    
+
     print(f"Candles data:")
     print(f"  Candle 1: H:{high1:.2f} L:{low1:.2f}")
     print(f"  Candle 2: H:{high2:.2f} L:{low2:.2f} C:{close2:.2f}")
     print(f"  Candle 3: H:{high3:.2f} L:{low3:.2f} C:{close3:.2f}")
-    
+
+    # ATR фильтр: пропускаем слабые свечи
+    candle_range = high2 - low2
+    if candle_range < atr * 0.7:
+        print(f"ATR filter: range {candle_range:.2f} too small vs ATR {atr:.2f}, skip")
+        return None
+
     # LONG: ScoB down + close above high2
     if (low2 < low1 and close2 > low1 and close3 > high2):
         entry = high2
-        stop_loss = low2
+        stop_loss = entry - 1.5 * atr  # адаптивный стоп
         risk = entry - stop_loss
         take_profit = entry + (risk * 2)
         print(f"ScoB LONG pattern detected at {time_str}")
@@ -363,11 +391,11 @@ def check_scob_pattern():
             "stop_loss": round(stop_loss, 2),
             "take_profit": round(take_profit, 2),
         }
-    
+
     # SHORT: ScoB up + close below low2  
     elif (high2 > high1 and close2 < high1 and close3 < low2):
         entry = low2
-        stop_loss = high2
+        stop_loss = entry + 1.5 * atr  # адаптивный стоп
         risk = stop_loss - entry
         take_profit = entry - (risk * 2)
         print(f"ScoB SHORT pattern detected at {time_str}")
@@ -378,7 +406,7 @@ def check_scob_pattern():
             "stop_loss": round(stop_loss, 2),
             "take_profit": round(take_profit, 2),
         }
-    
+
     print(f"No ScoB pattern found at {time_str}")
     return None
 ===== ./config.py =====
@@ -393,12 +421,17 @@ TELEGRAM_CHAT_ID = "317217451"
 
 CANDLES_NEEDED = 3
 ===== ./telegram.py =====
+# telegram.py
 import json
 import requests
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL, TF, CAPITAL, RISK_PERCENT
 from utils import calculate_position
 
 def send_telegram_message(title, time_str, entry, stop_loss, take_profit):
+    """
+    Send a message to Telegram.
+    If entry and stop_loss are set, include position info.
+    """
     if entry and stop_loss:
         size, position_info = calculate_position(float(entry), float(stop_loss))
         message = f"""scob {title}
@@ -422,6 +455,7 @@ tp: {take_profit}
             ]
         }
     else:
+        # Просто текст для уведомлений (High/Low break и другие)
         message = take_profit
         keyboard = None
     
@@ -440,19 +474,23 @@ tp: {take_profit}
         return False
 
 def send_startup_message():
-    message = f"Started\n{SYMBOL}\n{TF}\nAmount : {CAPITAL} USDT\nRisk: {RISK_PERCENT}%"
-    send_telegram_message("start", "", "", "", message)
+    message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%"
+    send_telegram_message("startup", "", "", "", message)
 
 def send_error_message(error):
-    send_telegram_message("error", "", "", "", f"Bot error: {error}")
+    message = f"Bot error: {error}"
+    send_telegram_message("error", "", "", "", message)
 
 def set_webhook():
     url = "http://194.87.238.84:5000/webhook"
-    response = requests.post(
-        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
-        data={"url": url}
-    )
-    print(f"Webhook set: {response.status_code}")
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
+            data={"url": url}
+        )
+        print(f"Webhook set: {response.status_code}")
+    except Exception as e:
+        print(f"Error setting webhook: {e}")
 ===== ./event_bus.py =====
 subscribers = {}
 

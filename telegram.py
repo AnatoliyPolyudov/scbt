@@ -1,9 +1,14 @@
+# telegram.py
 import json
 import requests
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL, TF, CAPITAL, RISK_PERCENT
 from utils import calculate_position
 
 def send_telegram_message(title, time_str, entry, stop_loss, take_profit):
+    """
+    Send a message to Telegram.
+    If entry and stop_loss are set, include position info.
+    """
     if entry and stop_loss:
         size, position_info = calculate_position(float(entry), float(stop_loss))
         message = f"""scob {title}
@@ -27,6 +32,7 @@ tp: {take_profit}
             ]
         }
     else:
+        # Просто текст для уведомлений (High/Low break и другие)
         message = take_profit
         keyboard = None
     
@@ -45,16 +51,20 @@ tp: {take_profit}
         return False
 
 def send_startup_message():
-    message = f"Started\n{SYMBOL}\n{TF}\nAmount : {CAPITAL} USDT\nRisk: {RISK_PERCENT}%"
-    send_telegram_message("start", "", "", "", message)
+    message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%"
+    send_telegram_message("startup", "", "", "", message)
 
 def send_error_message(error):
-    send_telegram_message("error", "", "", "", f"Bot error: {error}")
+    message = f"Bot error: {error}"
+    send_telegram_message("error", "", "", "", message)
 
 def set_webhook():
     url = "http://194.87.238.84:5000/webhook"
-    response = requests.post(
-        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
-        data={"url": url}
-    )
-    print(f"Webhook set: {response.status_code}")
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
+            data={"url": url}
+        )
+        print(f"Webhook set: {response.status_code}")
+    except Exception as e:
+        print(f"Error setting webhook: {e}")

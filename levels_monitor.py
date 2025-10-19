@@ -7,10 +7,8 @@ class LevelMonitor:
     def __init__(self):
         self.last_4h_high = None
         self.last_4h_low = None
-
         self.last_update_time = 0
         self.last_closed_ts = None
-
         print("Level Monitor initialized")
 
     def fetch_4h_candles(self, limit=10):
@@ -22,29 +20,27 @@ class LevelMonitor:
             return []
 
     def update_levels(self, send_message=True):
-
         """Update 4H high/low levels from the last closed candle"""
         current_time = time.time()
-        
-        # 🔥 Обновляем уровни не чаще чем раз в 4 часа
+
+        # Не чаще чем раз в 4 часа
         if current_time - self.last_update_time < 14400 and self.last_4h_high is not None:
             print(f"LevelMonitor: Levels updated recently, skipping. Next update in {14400 - (current_time - self.last_update_time):.0f} seconds")
             return False
-            
+
         candles = self.fetch_4h_candles(limit=3)
         if len(candles) >= 2:
-            last_closed = candles[-2]  # последняя закрытая свеча
+            last_closed = candles[-2]
             high = last_closed[2]
             low = last_closed[3]
-            
-            # 🔥 Отправляем сообщение ТОЛЬКО если уровни изменились И send_message=True
+
             if self.last_4h_high is None or high != self.last_4h_high or low != self.last_4h_low:
                 self.last_4h_high = high
                 self.last_4h_low = low
                 self.last_update_time = current_time
-                
+
                 if send_message:
-                    message = f"📊 4H Levels Updated:\n🏔️ High: {high:.2f}\n📉 Low: {low:.2f}"
+                    message = f"Levels updated High {high:.2f}, Low {low:.2f}"
                     send_telegram_message("4H_levels", "", "", "", message)
                     print(f"LevelMonitor: {message}")
                 else:
@@ -57,39 +53,70 @@ class LevelMonitor:
         else:
             print("LevelMonitor: Not enough candles to determine 4H levels")
             return False
-        """Update levels based on last fully closed 4H candle"""
-        candles = self.fetch_4h_candles(limit=10)
-        if not candles:
-            print("LevelMonitor: No candles fetched")
-            return
 
-        # Берём последнюю полностью закрытую свечу
-        # timestamp каждой свечи возвращается в мс
-        current_ts = int(time.time() * 1000)
-        last_closed = None
-        for candle in reversed(candles):
-            ts_open = candle[0]
-            ts_close = ts_open + 4 * 60 * 60 * 1000  # 4h в мс
-            if ts_close <= current_ts:
-                last_closed = candle
-                break
 
-        if last_closed is None:
-            print("LevelMonitor: No fully closed 4H candle yet")
-            return
+def monitor_levels():
+    """Monitor 4H levels for breakouts"""
+    monitor = LevelMonitor()
+    monitor.update_levels(send_message=True)
 
-        high = last_closed[2]
-        low = last_closed[3]
-        ts_close = last_closed[0] + 4*60*60*1000
+    current_high_level = monitor.last_4h_high
+    current_low_level = monitor.last_4h_low
+    high_breakout_reported = False
+    low_breakout_reported = False
+    last_high_msg = 0
+    last_low_msg = 0
+    MIN_MSG_INTERVAL = 300  # 5 минут между сообщениями
 
-        # Проверяем, обновились ли уровни
-        if self.last_closed_ts != ts_close or self.last_4h_high != high or self.last_4h_low != low:
-            self.last_4h_high = high
-            self.last_4h_low = low
-            self.last_closed_ts = ts_close
-            if send_message:
-                message = f"4H Levels Updated:\nHigh: {high:.2f}\nLow: {low:.2f}"
-                send_telegram_message("4H_levels", "", "", "", message)
-                print(f"LevelMonitor: {message}")
-        else:
-            print(f"LevelMonitor: Levels unchanged - High={high:.2f}, Low={low:.2f}")
+    print("Level monitor started - tracking 4H breakouts")
+
+    while True:
+        try:
+            current_time = time.time()
+            # Обновляем уровни каждые 5 минут
+            if current_time % 300 < 30:
+                old_high = current_high_level
+                old_low = current_low_level
+                if monitor.update_levels(send_message=False):
+                    current_high_level = monitor.last_4h_high
+                    current_low_level = monitor.last_4h_low
+                    high_breakout_reported = False
+                    low_breakout_reported = False
+                    print(f"Levels updated: High={current_high_level:.2f}, Low={current_low_level:.2f}")
+
+            ticker = ex.fetch_ticker(SYMBOL)
+            current_price = ticker["last"]
+
+            # Проверка пробоя верхнего уровня
+            if current_high_level and current_price > current_high_level:
+                if not high_breakout_reported or (time.time() - last_high_msg > MIN_MSG_INTERVAL):
+                    message = f"High break {current_high_level:.2f}"
+                    send_telegram_message("", "", "", "", message)
+                    print(f"LevelMonitor: {message}")
+                    high_breakout_reported = True
+                    last_high_msg = time.time()
+                    low_breakout_reported = False
+
+            # Проверка пробоя нижнего уровня
+            elif current_low_level and current_price < current_low_level:
+                if not low_breakout_reported or (time.time() - last_low_msg > MIN_MSG_INTERVAL):
+                    message = f"Low break {current_low_level:.2f}"
+                    send_telegram_message("", "", "", "", message)
+                    print(f"LevelMonitor: {message}")
+                    low_breakout_reported = True
+                    last_low_msg = time.time()
+                    high_breakout_reported = False
+
+            # Сброс флагов, если цена вернулась в диапазон
+            elif current_high_level and current_low_level:
+                if current_low_level <= current_price <= current_high_level:
+                    if high_breakout_reported or low_breakout_reported:
+                        print(f"LevelMonitor: Price returned to range {current_low_level:.2f} - {current_high_level:.2f}, resetting breakout flags")
+                        high_breakout_reported = False
+                        low_breakout_reported = False
+
+            time.sleep(30)
+
+        except Exception as e:
+            print(f"Level monitor error: {e}")
+            time.sleep(60)

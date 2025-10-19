@@ -1,8 +1,9 @@
 # patterns.py
 import time
 from datetime import datetime
-from exchange import fetch_candles
+from exchange import fetch_candles, ex, SYMBOL
 from config import CANDLES_NEEDED
+import statistics
 
 def wait_for_candle_close():
     """Wait for current candle to close"""
@@ -22,33 +23,49 @@ def check_scob_pattern():
     if len(candles) < CANDLES_NEEDED:
         print("Not enough candles for analysis")
         return None
-    
+
+    # === ATR фильтр ===
+    atr_candles = ex.fetch_ohlcv(SYMBOL, "5m", limit=20)
+    trs = []
+    for i in range(1, len(atr_candles)):
+        high = atr_candles[i][2]
+        low = atr_candles[i][3]
+        prev_close = atr_candles[i - 1][4]
+        tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
+        trs.append(tr)
+    atr = statistics.mean(trs)
+
     # Candle 1 (oldest) - индекс -3
-    # candles[0] = [timestamp, open, high, low, close, volume]
-    high1 = candles[-3][2]  # high
-    low1 = candles[-3][3]   # low
-    
+    high1 = candles[-3][2]
+    low1 = candles[-3][3]
+
     # Candle 2 (ScoB pattern) - индекс -2  
     high2 = candles[-2][2]
     low2 = candles[-2][3]
     close2 = candles[-2][4]
-    
+
     # Candle 3 (confirmation) - индекс -1
     high3 = candles[-1][2]
     low3 = candles[-1][3] 
     close3 = candles[-1][4]
-    
+
     time_str = datetime.fromtimestamp(candles[-1][0] / 1000).strftime('%H:%M')
-    
+
     print(f"Candles data:")
     print(f"  Candle 1: H:{high1:.2f} L:{low1:.2f}")
     print(f"  Candle 2: H:{high2:.2f} L:{low2:.2f} C:{close2:.2f}")
     print(f"  Candle 3: H:{high3:.2f} L:{low3:.2f} C:{close3:.2f}")
-    
+
+    # ATR фильтр: пропускаем слабые свечи
+    candle_range = high2 - low2
+    if candle_range < atr * 0.7:
+        print(f"ATR filter: range {candle_range:.2f} too small vs ATR {atr:.2f}, skip")
+        return None
+
     # LONG: ScoB down + close above high2
     if (low2 < low1 and close2 > low1 and close3 > high2):
         entry = high2
-        stop_loss = low2
+        stop_loss = entry - 1.5 * atr  # адаптивный стоп
         risk = entry - stop_loss
         take_profit = entry + (risk * 2)
         print(f"ScoB LONG pattern detected at {time_str}")
@@ -59,11 +76,11 @@ def check_scob_pattern():
             "stop_loss": round(stop_loss, 2),
             "take_profit": round(take_profit, 2),
         }
-    
+
     # SHORT: ScoB up + close below low2  
     elif (high2 > high1 and close2 < high1 and close3 < low2):
         entry = low2
-        stop_loss = high2
+        stop_loss = entry + 1.5 * atr  # адаптивный стоп
         risk = stop_loss - entry
         take_profit = entry - (risk * 2)
         print(f"ScoB SHORT pattern detected at {time_str}")
@@ -74,6 +91,6 @@ def check_scob_pattern():
             "stop_loss": round(stop_loss, 2),
             "take_profit": round(take_profit, 2),
         }
-    
+
     print(f"No ScoB pattern found at {time_str}")
     return None
