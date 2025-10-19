@@ -24,10 +24,6 @@ tp: {take_profit}
                 [
                     {'text': 'BUY LIMIT', 'callback_data': f'BUY_LIMIT:{entry}'},
                     {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'}
-                ],
-                [
-                    {'text': 'BUY MARKET', 'callback_data': 'BUY_MARKET'},
-                    {'text': 'SELL MARKET', 'callback_data': 'SELL_MARKET'}
                 ]
             ]
         }
