@@ -1,15 +1,26 @@
 # patterns.py
 import time
 from datetime import datetime
+<<<<<<< HEAD
 from exchange import fetch_candles, SYMBOL
 from config import CANDLES_NEEDED
 import numpy as np
 import talib
+=======
+import numpy as np
+import talib
+from exchange import fetch_candles, ex, SYMBOL
+from config import CANDLES_NEEDED
+>>>>>>> de590e07e4f56ecc5205567857397a9f7a572e41
 
 def wait_for_candle_close():
     """Wait for current candle to close"""
     current_time = int(time.time() * 1000)
+<<<<<<< HEAD
     candle_duration = 300000  # 5 minutes in ms
+=======
+    candle_duration = 300000  # 5 минут
+>>>>>>> de590e07e4f56ecc5205567857397a9f7a572e41
     next_candle_time = (current_time // candle_duration + 1) * candle_duration
     wait_time = (next_candle_time - current_time) / 1000
     if wait_time > 0:
@@ -25,10 +36,24 @@ def check_scob_pattern():
         print("Not enough candles for analysis")
         return None
 
+<<<<<<< HEAD
     # Подготовка массивов для TA-Lib
     highs = np.array([c[2] for c in candles], dtype=float)
     lows = np.array([c[3] for c in candles], dtype=float)
     closes = np.array([c[4] for c in candles], dtype=float)
+=======
+    # === ATR фильтр через TA-Lib ===
+    atr_candles = ex.fetch_ohlcv(SYMBOL, "5m", limit=20)
+    highs = np.array([c[2] for c in atr_candles], dtype=float)
+    lows = np.array([c[3] for c in atr_candles], dtype=float)
+    closes = np.array([c[4] for c in atr_candles], dtype=float)
+    atr_series = talib.ATR(highs, lows, closes, timeperiod=14)
+    atr = atr_series[-1]  # последнее значение ATR
+
+    # Candle 1 (oldest) - индекс -3
+    high1 = candles[-3][2]
+    low1 = candles[-3][3]
+>>>>>>> de590e07e4f56ecc5205567857397a9f7a572e41
 
     # Расчёт ATR через TA-Lib
     atr = talib.ATR(highs, lows, closes, timeperiod=14)[-1]
