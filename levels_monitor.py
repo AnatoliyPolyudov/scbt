@@ -7,11 +7,10 @@ class LevelMonitor:
     def __init__(self):
         self.last_4h_high = None
         self.last_4h_low = None
-<<<<<<< HEAD
+
         self.last_update_time = 0
-=======
         self.last_closed_ts = None
->>>>>>> ee8c39f1c81c48536585215e05f53cf4bfa56b89
+
         print("Level Monitor initialized")
 
     def fetch_4h_candles(self, limit=10):
@@ -23,7 +22,7 @@ class LevelMonitor:
             return []
 
     def update_levels(self, send_message=True):
-<<<<<<< HEAD
+
         """Update 4H high/low levels from the last closed candle"""
         current_time = time.time()
         
@@ -58,7 +57,6 @@ class LevelMonitor:
         else:
             print("LevelMonitor: Not enough candles to determine 4H levels")
             return False
-=======
         """Update levels based on last fully closed 4H candle"""
         candles = self.fetch_4h_candles(limit=10)
         if not candles:
@@ -95,4 +93,3 @@ class LevelMonitor:
                 print(f"LevelMonitor: {message}")
         else:
             print(f"LevelMonitor: Levels unchanged - High={high:.2f}, Low={low:.2f}")
->>>>>>> ee8c39f1c81c48536585215e05f53cf4bfa56b89
