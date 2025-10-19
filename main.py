@@ -58,19 +58,18 @@ def main():
     while True:
         try:
             wait_for_candle_close()
-            signals = check_scob_pattern()  # возвращает список сигналов
+            signal = check_scob_pattern()  # возвращает один сигнал
 
-            if signals:
+            if signal:
                 current_time = int(time.time() * 1000)
                 if current_time - last_signal_time > 60000:
-                    for signal in signals:
-                        send_telegram_message(
-                            signal["title"],       # "long (ATR)" или "short (no ATR)"
-                            signal["time"],
-                            signal["entry"],
-                            signal["stop_loss"],
-                            signal["take_profit"]
-                        )
+                    send_telegram_message(
+                        signal["title"],
+                        signal["time"],
+                        signal["entry"],
+                        signal["stop_loss"],
+                        signal["take_profit"]
+                    )
                     last_signal_time = current_time
 
             gc.collect()
