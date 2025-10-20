@@ -59,19 +59,18 @@ def main():
     while True:
         try:
             wait_for_candle_close()
-            signals = check_scob_pattern()  # возвращает список сигналов
+            signal = check_scob_pattern()  # возвращает один сигнал
 
-            if signals:
+            if signal:
                 current_time = int(time.time() * 1000)
                 if current_time - last_signal_time > 60000:
-                    for signal in signals:
-                        send_telegram_message(
-                            signal["title"],       # "long (ATR)" или "short (no ATR)"
-                            signal["time"],
-                            signal["entry"],
-                            signal["stop_loss"],
-                            signal["take_profit"]
-                        )
+                    send_telegram_message(
+                        signal["title"],
+                        signal["time"],
+                        signal["entry"],
+                        signal["stop_loss"],
+                        signal["take_profit"]
+                    )
                     last_signal_time = current_time
 
             gc.collect()
@@ -132,22 +131,17 @@ def wait_for_candle_close():
         time.sleep(wait_time)
 
 def check_scob_pattern():
-    """Detect ScoB pattern with ATR and without ATR"""
+    """Detect Single Candle Order Block (ScoB) pattern"""
     print("Analyzing candles for ScoB pattern...")
 
     candles = fetch_candles(limit=CANDLES_NEEDED + 20)
     if len(candles) < CANDLES_NEEDED + 20:
         print("Not enough candles for analysis")
-        return []
+        return None
 
     highs = np.array([c[2] for c in candles], dtype=float)
     lows = np.array([c[3] for c in candles], dtype=float)
     closes = np.array([c[4] for c in candles], dtype=float)
-
-    # ATR
-    atr = talib.ATR(highs, lows, closes, timeperiod=14)[-1]
-    if np.isnan(atr):
-        atr = None
 
     c1, c2, c3 = candles[-3], candles[-2], candles[-1]
     high1, low1 = c1[2], c1[3]
@@ -155,68 +149,37 @@ def check_scob_pattern():
     high3, low3, close3 = c3[2], c3[3], c3[4]
 
     time_str = datetime.fromtimestamp(c3[0] / 1000).strftime('%H:%M')
-    signals = []
 
     # LONG pattern
     if low2 < low1 and close2 > low1 and close3 > high2:
         entry = high2
-        stop_loss_default = low2  # обычный стоп
-        take_profit_default = entry + (entry - stop_loss_default) * 2
-
-        # без ATR
-        signals.append({
-            "title": "long (no ATR)",
+        stop_loss = low2
+        take_profit = entry + (entry - stop_loss) * 2
+        print(f"ScoB LONG pattern detected at {time_str}")
+        return {
+            "title": "long",
             "time": time_str,
             "entry": round(entry, 2),
-            "stop_loss": round(stop_loss_default, 2),
-            "take_profit": round(take_profit_default, 2)
-        })
-
-        # с ATR
-        if atr:
-            stop_loss_atr = entry - 1.5 * atr
-            take_profit_atr = entry + (entry - stop_loss_atr) * 2
-            signals.append({
-                "title": "long (ATR)",
-                "time": time_str,
-                "entry": round(entry, 2),
-                "stop_loss": round(stop_loss_atr, 2),
-                "take_profit": round(take_profit_atr, 2)
-            })
+            "stop_loss": round(stop_loss, 2),
+            "take_profit": round(take_profit, 2)
+        }
 
     # SHORT pattern
     elif high2 > high1 and close2 < high1 and close3 < low2:
         entry = low2
-        stop_loss_default = high2
-        take_profit_default = entry - (stop_loss_default - entry) * 2
-
-        # без ATR
-        signals.append({
-            "title": "short (no ATR)",
+        stop_loss = high2
+        take_profit = entry - (stop_loss - entry) * 2
+        print(f"ScoB SHORT pattern detected at {time_str}")
+        return {
+            "title": "short",
             "time": time_str,
             "entry": round(entry, 2),
-            "stop_loss": round(stop_loss_default, 2),
-            "take_profit": round(take_profit_default, 2)
-        })
+            "stop_loss": round(stop_loss, 2),
+            "take_profit": round(take_profit, 2)
+        }
 
-        # с ATR
-        if atr:
-            stop_loss_atr = entry + 1.5 * atr
-            take_profit_atr = entry - (stop_loss_atr - entry) * 2
-            signals.append({
-                "title": "short (ATR)",
-                "time": time_str,
-                "entry": round(entry, 2),
-                "stop_loss": round(stop_loss_atr, 2),
-                "take_profit": round(take_profit_atr, 2)
-            })
-
-    if signals:
-        print(f"Signals detected at {time_str}: {[s['title'] for s in signals]}")
-    else:
-        print(f"No ScoB pattern found at {time_str}")
-
-    return signals
+    print(f"No ScoB pattern found at {time_str}")
+    return None
 ===== ./config.py =====
 # config.py
 SYMBOL = "ETH/USDT:USDT"
