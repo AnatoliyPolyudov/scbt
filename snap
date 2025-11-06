@@ -1,4 +1,86 @@
-===== ./main.py =====
+
+
+===== callback_handler.py =====
+
+
+from event_bus import publish
+
+def handle_callback(query_data):
+    print("CALLBACK_HANDLER: Received callback:", query_data)
+    
+    # Обрабатываем только лимитные ордера
+    if ':' in query_data:
+        # Лимитные ордера: BUY_LIMIT:3800.50
+        action, price = query_data.split(':')
+        publish("BUTTON_CLICK", {"action": action, "price": price})
+
+
+===== config.py =====
+
+
+# config.py
+SYMBOL = "BTC/USDT:USDT"
+TF = "1m" 
+CAPITAL = 100
+RISK_PERCENT = 1
+
+TELEGRAM_BOT_TOKEN = "8468371553:AAE5XfnFkgkeadWt2M44w8BsiTQ8-7dogFU"
+TELEGRAM_CHAT_ID = "317217451"
+
+CANDLES_NEEDED = 3
+
+
+===== event_bus.py =====
+
+
+subscribers = {}
+
+def subscribe(event_type, callback):
+    if event_type not in subscribers:
+        subscribers[event_type] = []
+    subscribers[event_type].append(callback)
+
+def publish(event_type, data):
+    if event_type in subscribers:
+        for callback in subscribers[event_type]:
+            callback(data)
+
+
+===== exchange.py =====
+
+
+# exchange.py
+import ccxt
+from config import SYMBOL, TF
+
+# Exchange connection
+ex = ccxt.okx({
+    "enableRateLimit": True,
+    "options": {"defaultType": "swap"}
+})
+
+def fetch_candles(limit=3):
+    """Fetch candles from exchange - returns list instead of DataFrame"""
+    try:
+        ohlcv = ex.fetch_ohlcv(SYMBOL, TF, limit=limit)
+        return ohlcv  # [[timestamp, open, high, low, close, volume], ...]
+    except Exception as e:
+        print(f"Error fetching data: {e}")
+        return []
+
+def check_connection():
+    """Check exchange connection"""
+    try:
+        markets = ex.load_markets()
+        print("OKX exchange connected successfully")
+        return True
+    except Exception as e:
+        print(f"Exchange connection error: {e}")
+        return False
+
+===== main.py =====
+
+
 # main.py
 import order_manager
 import time
@@ -86,7 +168,11 @@ def main():
 
 if __name__ == "__main__":
     main()
-===== ./order_manager.py =====
+
+
+===== order_manager.py =====
+
+
 from event_bus import subscribe
 
 def handle_button_click(data):
@@ -101,18 +187,11 @@ def handle_button_click(data):
         print(f"TEST_ORDER: Would create SELL LIMIT at {price}")
 
 subscribe("BUTTON_CLICK", handle_button_click)
-===== ./callback_handler.py =====
-from event_bus import publish
 
-def handle_callback(query_data):
-    print("CALLBACK_HANDLER: Received callback:", query_data)
-    
-    # Обрабатываем только лимитные ордера
-    if ':' in query_data:
-        # Лимитные ордера: BUY_LIMIT:3800.50
-        action, price = query_data.split(':')
-        publish("BUTTON_CLICK", {"action": action, "price": price})
-===== ./patterns.py =====
+
+===== patterns.py =====
+
+
 # patterns.py
 import time
 from datetime import datetime
@@ -180,18 +259,11 @@ def check_scob_pattern():
 
     print(f"No ScoB pattern found at {time_str}")
     return None
-===== ./config.py =====
-# config.py
-SYMBOL = "ETH/USDT:USDT"
-TF = "5m" 
-CAPITAL = 1000
-RISK_PERCENT = 1
 
-TELEGRAM_BOT_TOKEN = "8436652130:AAF6On0GJtRHfMZyqD3mpM57eXZfWofJeng"
-TELEGRAM_CHAT_ID = "317217451"
 
-CANDLES_NEEDED = 3
-===== ./telegram.py =====
+===== telegram.py =====
+
+
 # telegram.py
 import json
 import requests
@@ -258,20 +330,11 @@ def set_webhook():
         print(f"Webhook set: {response.status_code}")
     except Exception as e:
         print(f"Error setting webhook: {e}")
-===== ./row[ema] =====
-===== ./event_bus.py =====
-subscribers = {}
 
-def subscribe(event_type, callback):
-    if event_type not in subscribers:
-        subscribers[event_type] = []
-    subscribers[event_type].append(callback)
 
-def publish(event_type, data):
-    if event_type in subscribers:
-        for callback in subscribers[event_type]:
-            callback(data)
-===== ./utils.py =====
+===== utils.py =====
+
+
 # utils.py
 from config import CAPITAL, RISK_PERCENT
 
@@ -291,33 +354,3 @@ Position size: {size:.4f} ETH"""
     
     print(position_info)
     return size, position_info
-===== ./README.md =====
-# scbt===== ./exchange.py =====
-# exchange.py
-import ccxt
-from config import SYMBOL, TF
-
-# Exchange connection
-ex = ccxt.okx({
-    "enableRateLimit": True,
-    "options": {"defaultType": "swap"}
-})
-
-def fetch_candles(limit=3):
-    """Fetch candles from exchange - returns list instead of DataFrame"""
-    try:
-        ohlcv = ex.fetch_ohlcv(SYMBOL, TF, limit=limit)
-        return ohlcv  # [[timestamp, open, high, low, close, volume], ...]
-    except Exception as e:
-        print(f"Error fetching data: {e}")
-        return []
-
-def check_connection():
-    """Check exchange connection"""
-    try:
-        markets = ex.load_markets()
-        print("OKX exchange connected successfully")
-        return True
-    except Exception as e:
-        print(f"Exchange connection error: {e}")
-        return False
