@@ -3,16 +3,20 @@
 ===== callback_handler.py =====
 
 
+# callback_handler.py
 from event_bus import publish
 
 def handle_callback(query_data):
     print("CALLBACK_HANDLER: Received callback:", query_data)
     
-    # Обрабатываем только лимитные ордера
     if ':' in query_data:
-        # Лимитные ордера: BUY_LIMIT:3800.50
+        # Лимитные ордера с ценой: BUY_LIMIT:3800.50 или SELL_LIMIT:3800.50
         action, price = query_data.split(':')
         publish("BUTTON_CLICK", {"action": action, "price": price})
+    else:
+        # Кнопка без цены, например BALANCE
+        publish("BUTTON_CLICK", {"action": query_data})
+
 
 
 ===== config.py =====
@@ -204,14 +208,20 @@ if __name__ == "__main__":
 ===== order_manager.py =====
 
 
+# order_manager.py
 from event_bus import subscribe
 from exchange import place_order
+from telegram import send_balance
 
 def handle_button_click(data):
     print("ORDER_MANAGER: Received button click:", data)
     
     action = data.get("action")
-    price = float(data.get("price"))
+    
+    # Для лимитных ордеров передается цена
+    price = data.get("price")
+    if price:
+        price = float(price)
 
     if action == "BUY_LIMIT":
         print(f"Placing BUY LIMIT at {price}")
@@ -219,7 +229,11 @@ def handle_button_click(data):
     elif action == "SELL_LIMIT":
         print(f"Placing SELL LIMIT at {price}")
         place_order("SELL", price)
+    elif action == "BALANCE":
+        print("Запрос баланса")
+        send_balance()  # отправляем баланс в телеграм
 
+# Подписка на событие кнопок
 subscribe("BUTTON_CLICK", handle_button_click)
 
 
@@ -303,6 +317,7 @@ import json
 import requests
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL, TF, CAPITAL, RISK_PERCENT
 from utils import calculate_position
+from exchange import ex  # подключаем объект биржи для запроса баланса
 
 def send_telegram_message(title, time_str, entry, stop_loss, take_profit):
     """
@@ -323,12 +338,12 @@ tp: {take_profit}
             'inline_keyboard': [
                 [
                     {'text': 'BUY LIMIT', 'callback_data': f'BUY_LIMIT:{entry}'},
-                    {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'}
+                    {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'},
+                    {'text': 'Баланс', 'callback_data': 'BALANCE'}
                 ]
             ]
         }
     else:
-        # Просто текст для уведомлений (High/Low break и другие)
         message = take_profit
         keyboard = None
     
@@ -353,6 +368,16 @@ def send_startup_message():
 def send_error_message(error):
     message = f"Bot error: {error}"
     send_telegram_message("error", "", "", "", message)
+
+def send_balance():
+    """Send current account balance to Telegram"""
+    try:
+        balance = ex.fetch_balance()
+        usdt_balance = balance['total'].get('USDT', 0)
+        message = f"Ваш баланс: {usdt_balance} USDT"
+        send_telegram_message("Баланс", "", "", "", message)
+    except Exception as e:
+        send_error_message(f"Ошибка получения баланса: {e}")
 
 def set_webhook():
     url = "http://194.87.238.84:5000/webhook"
