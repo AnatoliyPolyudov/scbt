@@ -54,7 +54,7 @@ def send_startup_message():
         usdt_balance = balance['total'].get('USDT', 0)
         rounded_balance = round(usdt_balance, 1)
         
-        message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%\nBalance: {rounded_balance} USDT"
+        message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%\n{rounded_balance} USDT"
         send_telegram_message("startup", "", "", "", message)
     except Exception as e:
         message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%\nBalance: error"
@@ -72,7 +72,7 @@ def send_balance():
         ex = create_exchange()
         balance = ex.fetch_balance()
         usdt_balance = balance['total'].get('USDT', 0)
-        message = f"Balance: {round(usdt_balance, 1)} USDT"
+        message = f"{round(usdt_balance, 1)} USDT"
         send_telegram_message("BALANCE", "", "", "", message)
     except Exception as e:
         send_error_message(f"Ошибка получения баланса: {e}")
