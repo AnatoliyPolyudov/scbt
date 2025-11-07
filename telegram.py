@@ -47,23 +47,28 @@ tp: {take_profit}
         return False
 
 def send_startup_message():
-    message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%"
-    send_telegram_message("startup", "", "", "", message)
-
-def send_error_message(error):
-    message = f"Bot error: {error}"
-    send_telegram_message("error", "", "", "", message)
+    try:
+        from exchange import create_exchange
+        ex = create_exchange()
+        balance = ex.fetch_balance()
+        usdt_balance = balance['total'].get('USDT', 0)
+        rounded_balance = round(usdt_balance, 1)
+        
+        message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%\nBalance: {rounded_balance} USDT"
+        send_telegram_message("startup", "", "", "", message)
+    except Exception as e:
+        message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%\nBalance: error"
+        send_telegram_message("startup", "", "", "", message)
 
 def send_balance():
     """Send current account balance to Telegram"""
     try:
-        from exchange import create_exchange  # импортируем функцию
-        ex = create_exchange()  # создаем объект биржи
+        from exchange import create_exchange
+        ex = create_exchange()
         balance = ex.fetch_balance()
         usdt_balance = balance['total'].get('USDT', 0)
-        # Округляем до десятых
-        message = f"Ваш баланс: {round(usdt_balance, 1)} USDT"
-        send_telegram_message("Баланс", "", "", "", message)
+        message = f"Balance: {round(usdt_balance, 1)} USDT"
+        send_telegram_message("BALANCE", "", "", "", message)
     except Exception as e:
         send_error_message(f"Ошибка получения баланса: {e}")
 
