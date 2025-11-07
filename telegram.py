@@ -4,11 +4,6 @@ import requests
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL, TF, CAPITAL, RISK_PERCENT
 from utils import calculate_position
 
-def get_exchange():
-    """Создает и возвращает объект биржи"""
-    from exchange import create_exchange
-    return create_exchange()
-
 def send_telegram_message(title, time_str, entry, stop_loss, take_profit):
     """
     Send a message to Telegram.
@@ -62,7 +57,8 @@ def send_error_message(error):
 def send_balance():
     """Send current account balance to Telegram"""
     try:
-        ex = get_exchange()  # создаем объект биржи при необходимости
+        # Импортируем здесь, а не в начале файла
+        from exchange import ex
         balance = ex.fetch_balance()
         usdt_balance = balance['total'].get('USDT', 0)
         message = f"Ваш баланс: {usdt_balance} USDT"
