@@ -19,23 +19,22 @@ def check_scob_pattern():
     """Detect Single Candle Order Block (ScoB) pattern"""
     print("Analyzing candles for ScoB pattern...")
 
-    candles = fetch_candles(limit=CANDLES_NEEDED + 20)
-    if len(candles) < CANDLES_NEEDED + 20:
+    # Берем на 1 свечу больше, чтобы анализировать только закрытые свечи
+    candles = fetch_candles(limit=CANDLES_NEEDED + 21)
+    if len(candles) < CANDLES_NEEDED + 21:
         print("Not enough candles for analysis")
         return None
 
-    highs = np.array([c[2] for c in candles], dtype=float)
-    lows = np.array([c[3] for c in candles], dtype=float)
-    closes = np.array([c[4] for c in candles], dtype=float)
-
-    c1, c2, c3 = candles[-3], candles[-2], candles[-1]
-    high1, low1 = c1[2], c1[3]
+    # Анализируем свечи c1, c2, c3 - все должны быть закрытыми
+    # Берем свечи -4, -3, -2 (вместо -3, -2, -1)
+    c1, c2, c3 = candles[-4], candles[-3], candles[-2]
+    high1, low1, close1 = c1[2], c1[3], c1[4]
     high2, low2, close2 = c2[2], c2[3], c2[4]
     high3, low3, close3 = c3[2], c3[3], c3[4]
 
     time_str = datetime.fromtimestamp(c3[0] / 1000).strftime('%H:%M')
 
-    # LONG pattern
+    # LONG pattern - проверяем только закрытые свечи
     if low2 < low1 and close2 > low1 and close3 > high2:
         entry = high2
         stop_loss = low2
@@ -49,7 +48,7 @@ def check_scob_pattern():
             "take_profit": round(take_profit, 2)
         }
 
-    # SHORT pattern
+    # SHORT pattern - проверяем только закрытые свечи
     elif high2 > high1 and close2 < high1 and close3 < low2:
         entry = low2
         stop_loss = high2
