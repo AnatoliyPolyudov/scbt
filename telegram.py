@@ -57,11 +57,11 @@ def send_error_message(error):
 def send_balance():
     """Send current account balance to Telegram"""
     try:
-        # Импортируем здесь, а не в начале файла
         from exchange import ex
         balance = ex.fetch_balance()
         usdt_balance = balance['total'].get('USDT', 0)
-        message = f"Ваш баланс: {usdt_balance} USDT"
+        # Округляем до десятых
+        message = f"Ваш баланс: {round(usdt_balance, 1)} USDT"
         send_telegram_message("Баланс", "", "", "", message)
     except Exception as e:
         send_error_message(f"Ошибка получения баланса: {e}")
