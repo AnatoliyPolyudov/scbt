@@ -8,7 +8,7 @@ from exchange import check_connection
 from patterns import check_scob_pattern, wait_for_candle_close
 from telegram import send_startup_message, send_telegram_message, send_error_message
 from callback_handler import handle_callback
-from config import TELEGRAM_BOT_TOKEN
+from config import TELEGRAM_BOT_TOKEN, check_env_variables  # добавляем проверку
 
 def get_updates(offset=None):
     """Get updates from Telegram via polling"""
@@ -42,6 +42,12 @@ def process_updates():
 
 def main():
     print("Starting ScoB Bot...")
+    
+    # Проверяем переменные окружения перед запуском
+    if not check_env_variables():
+        print("Остановка бота из-за отсутствия переменных окружения")
+        return
+    
     print("Monitoring patterns...")
 
     send_startup_message()
