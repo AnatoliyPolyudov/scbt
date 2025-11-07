@@ -3,7 +3,11 @@ import json
 import requests
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL, TF, CAPITAL, RISK_PERCENT
 from utils import calculate_position
-from exchange import ex  # подключаем объект биржи для запроса баланса
+
+def get_exchange():
+    """Создает и возвращает объект биржи"""
+    from exchange import create_exchange
+    return create_exchange()
 
 def send_telegram_message(title, time_str, entry, stop_loss, take_profit):
     """
@@ -25,7 +29,7 @@ tp: {take_profit}
                 [
                     {'text': 'BUY LIMIT', 'callback_data': f'BUY_LIMIT:{entry}'},
                     {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'},
-                    {'text': 'BALANCE', 'callback_data': 'BALANCE'}
+                    {'text': 'Баланс', 'callback_data': 'BALANCE'}
                 ]
             ]
         }
@@ -58,6 +62,7 @@ def send_error_message(error):
 def send_balance():
     """Send current account balance to Telegram"""
     try:
+        ex = get_exchange()  # создаем объект биржи при необходимости
         balance = ex.fetch_balance()
         usdt_balance = balance['total'].get('USDT', 0)
         message = f"Ваш баланс: {usdt_balance} USDT"
