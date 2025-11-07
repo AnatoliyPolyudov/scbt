@@ -57,7 +57,8 @@ def send_error_message(error):
 def send_balance():
     """Send current account balance to Telegram"""
     try:
-        from exchange import ex
+        from exchange import create_exchange  # импортируем функцию
+        ex = create_exchange()  # создаем объект биржи
         balance = ex.fetch_balance()
         usdt_balance = balance['total'].get('USDT', 0)
         # Округляем до десятых
