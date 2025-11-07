@@ -60,6 +60,11 @@ def send_startup_message():
         message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%\nBalance: error"
         send_telegram_message("startup", "", "", "", message)
 
+def send_error_message(error):
+    """Send error message to Telegram"""
+    message = f"Bot error: {error}"
+    send_telegram_message("error", "", "", "", message)
+
 def send_balance():
     """Send current account balance to Telegram"""
     try:
