@@ -19,13 +19,24 @@ def handle_callback(query_data):
 
 
 # config.py
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # загружает переменные из .env
+
 SYMBOL = "BTC/USDT:USDT"
-TF = "1m" 
+TF = "1m"
 CAPITAL = 100
 RISK_PERCENT = 1
 
-TELEGRAM_BOT_TOKEN = "8468371553:AAE5XfnFkgkeadWt2M44w8BsiTQ8-7dogFU"
-TELEGRAM_CHAT_ID = "317217451"
+# Telegram
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+# Биржа OKX
+OKX_API_KEY = os.getenv("OKX_API_KEY")
+OKX_SECRET_KEY = os.getenv("OKX_SECRET_KEY")
+OKX_PASSPHRASE = os.getenv("OKX_PASSPHRASE")
 
 CANDLES_NEEDED = 3
 
@@ -51,10 +62,13 @@ def publish(event_type, data):
 
 # exchange.py
 import ccxt
-from config import SYMBOL, TF
+from config import SYMBOL, TF, OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE
 
 # Exchange connection
 ex = ccxt.okx({
+    "apiKey": OKX_API_KEY,
+    "secret": OKX_SECRET_KEY,
+    "password": OKX_PASSPHRASE,
     "enableRateLimit": True,
     "options": {"defaultType": "swap"}
 })
@@ -77,6 +91,23 @@ def check_connection():
     except Exception as e:
         print(f"Exchange connection error: {e}")
         return False
+
+def place_order(action, price, amount=0.001):
+    """
+    Реальная постановка ордера.
+    action: 'BUY' или 'SELL'
+    price: цена ордера
+    amount: кол-во (по умолчанию 0.001)
+    """
+    try:
+        side = "buy" if action.upper() == "BUY" else "sell"
+        order = ex.create_limit_order(SYMBOL, side, amount, price)
+        print(f"Order placed: {order}")
+        return order
+    except Exception as e:
+        print(f"Order error: {e}")
+        return None
+
 
 ===== main.py =====
 
@@ -174,17 +205,20 @@ if __name__ == "__main__":
 
 
 from event_bus import subscribe
+from exchange import place_order
 
 def handle_button_click(data):
     print("ORDER_MANAGER: Received button click:", data)
     
     action = data.get("action")
-    price = data.get("price")
-    
+    price = float(data.get("price"))
+
     if action == "BUY_LIMIT":
-        print(f"TEST_ORDER: Would create BUY LIMIT at {price}")
+        print(f"Placing BUY LIMIT at {price}")
+        place_order("BUY", price)
     elif action == "SELL_LIMIT":
-        print(f"TEST_ORDER: Would create SELL LIMIT at {price}")
+        print(f"Placing SELL LIMIT at {price}")
+        place_order("SELL", price)
 
 subscribe("BUTTON_CLICK", handle_button_click)
 
