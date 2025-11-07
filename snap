@@ -44,6 +44,27 @@ OKX_PASSPHRASE = os.getenv("OKX_PASSPHRASE")
 
 CANDLES_NEEDED = 3
 
+# Проверка загрузки переменных
+def check_env_variables():
+    required_vars = {
+        "TELEGRAM_BOT_TOKEN": TELEGRAM_BOT_TOKEN,
+        "TELEGRAM_CHAT_ID": TELEGRAM_CHAT_ID,
+        "OKX_API_KEY": OKX_API_KEY,
+        "OKX_SECRET_KEY": OKX_SECRET_KEY,
+        "OKX_PASSPHRASE": OKX_PASSPHRASE
+    }
+    
+    missing_vars = []
+    for name, value in required_vars.items():
+        if not value:
+            missing_vars.append(name)
+    
+    if missing_vars:
+        print(f"Ошибка: Отсутствуют переменные окружения: {', '.join(missing_vars)}")
+        return False
+    
+    print("Все переменные окружения загружены успешно")
+    return True
 
 ===== event_bus.py =====
 
@@ -68,20 +89,27 @@ def publish(event_type, data):
 import ccxt
 from config import SYMBOL, TF, OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE
 
-# Exchange connection
-ex = ccxt.okx({
-    "apiKey": OKX_API_KEY,
-    "secret": OKX_SECRET_KEY,
-    "password": OKX_PASSPHRASE,
-    "enableRateLimit": True,
-    "options": {"defaultType": "swap"}
-})
+def create_exchange():
+    """Создает и возвращает объект биржи"""
+    print(f"DEBUG: Creating exchange with API Key: {OKX_API_KEY[:10]}...")  # Отладочная информация
+    
+    if not all([OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE]):
+        raise Exception("Отсутствуют учетные данные для OKX. Проверьте файл .env")
+    
+    return ccxt.okx({
+        "apiKey": OKX_API_KEY,
+        "secret": OKX_SECRET_KEY,
+        "password": OKX_PASSPHRASE,
+        "enableRateLimit": True,
+        "options": {"defaultType": "swap"}
+    })
 
 def fetch_candles(limit=3):
     """Fetch candles from exchange - returns list instead of DataFrame"""
     try:
+        ex = create_exchange()
         ohlcv = ex.fetch_ohlcv(SYMBOL, TF, limit=limit)
-        return ohlcv  # [[timestamp, open, high, low, close, volume], ...]
+        return ohlcv
     except Exception as e:
         print(f"Error fetching data: {e}")
         return []
@@ -89,6 +117,7 @@ def fetch_candles(limit=3):
 def check_connection():
     """Check exchange connection"""
     try:
+        ex = create_exchange()
         markets = ex.load_markets()
         print("OKX exchange connected successfully")
         return True
@@ -104,6 +133,7 @@ def place_order(action, price, amount=0.001):
     amount: кол-во (по умолчанию 0.001)
     """
     try:
+        ex = create_exchange()
         side = "buy" if action.upper() == "BUY" else "sell"
         order = ex.create_limit_order(SYMBOL, side, amount, price)
         print(f"Order placed: {order}")
@@ -111,7 +141,6 @@ def place_order(action, price, amount=0.001):
     except Exception as e:
         print(f"Order error: {e}")
         return None
-
 
 ===== main.py =====
 
@@ -126,7 +155,7 @@ from exchange import check_connection
 from patterns import check_scob_pattern, wait_for_candle_close
 from telegram import send_startup_message, send_telegram_message, send_error_message
 from callback_handler import handle_callback
-from config import TELEGRAM_BOT_TOKEN
+from config import TELEGRAM_BOT_TOKEN, check_env_variables  # добавляем проверку
 
 def get_updates(offset=None):
     """Get updates from Telegram via polling"""
@@ -160,6 +189,12 @@ def process_updates():
 
 def main():
     print("Starting ScoB Bot...")
+    
+    # Проверяем переменные окружения перед запуском
+    if not check_env_variables():
+        print("Остановка бота из-за отсутствия переменных окружения")
+        return
+    
     print("Monitoring patterns...")
 
     send_startup_message()
@@ -203,7 +238,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 ===== order_manager.py =====
 
@@ -317,7 +351,6 @@ import json
 import requests
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL, TF, CAPITAL, RISK_PERCENT
 from utils import calculate_position
-from exchange import ex  # подключаем объект биржи для запроса баланса
 
 def send_telegram_message(title, time_str, entry, stop_loss, take_profit):
     """
@@ -339,7 +372,7 @@ tp: {take_profit}
                 [
                     {'text': 'BUY LIMIT', 'callback_data': f'BUY_LIMIT:{entry}'},
                     {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'},
-                    {'text': 'Баланс', 'callback_data': 'BALANCE'}
+                    {'text': 'BALANCE', 'callback_data': 'BALANCE'}
                 ]
             ]
         }
@@ -362,20 +395,33 @@ tp: {take_profit}
         return False
 
 def send_startup_message():
-    message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%"
-    send_telegram_message("startup", "", "", "", message)
+    try:
+        from exchange import create_exchange
+        ex = create_exchange()
+        balance = ex.fetch_balance()
+        usdt_balance = balance['total'].get('USDT', 0)
+        rounded_balance = round(usdt_balance, 1)
+        
+        message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%\n{rounded_balance} USDT"
+        send_telegram_message("startup", "", "", "", message)
+    except Exception as e:
+        message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%\nBalance: error"
+        send_telegram_message("startup", "", "", "", message)
 
 def send_error_message(error):
+    """Send error message to Telegram"""
     message = f"Bot error: {error}"
     send_telegram_message("error", "", "", "", message)
 
 def send_balance():
     """Send current account balance to Telegram"""
     try:
+        from exchange import create_exchange
+        ex = create_exchange()
         balance = ex.fetch_balance()
         usdt_balance = balance['total'].get('USDT', 0)
-        message = f"Ваш баланс: {usdt_balance} USDT"
-        send_telegram_message("Баланс", "", "", "", message)
+        message = f"{round(usdt_balance, 1)} USDT"
+        send_telegram_message("BALANCE", "", "", "", message)
     except Exception as e:
         send_error_message(f"Ошибка получения баланса: {e}")
 
@@ -389,7 +435,6 @@ def set_webhook():
         print(f"Webhook set: {response.status_code}")
     except Exception as e:
         print(f"Error setting webhook: {e}")
-
 
 ===== utils.py =====
 
