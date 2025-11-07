@@ -38,16 +38,28 @@ def check_connection():
         print(f"Exchange connection error: {e}")
         return False
 
-def place_order(action, price, amount=0.001):
+def place_order(action, price, amount=None):
     """
     Реальная постановка ордера.
     action: 'BUY' или 'SELL'
     price: цена ордера
-    amount: кол-во (по умолчанию 0.001)
+    amount: кол-во (если None, рассчитывается на основе 1% риска)
     """
     try:
         ex = create_exchange()
         side = "buy" if action.upper() == "BUY" else "sell"
+        
+        if amount is None:
+            # Рассчитываем количество BTC на 1% от капитала (5 USDT)
+            risk_amount = 5  # 1% от 500 USDT = 5 USDT
+            amount = risk_amount / price  # количество BTC за 5 USDT
+            
+            # Минимум 0.005 BTC (примерно 500 USDT при цене 100000)
+            min_btc_amount = 0.005
+            amount = max(min_btc_amount, round(amount, 4))
+            
+            print(f"Calculated amount: {amount} BTC for {risk_amount} USDT at price {price}")
+        
         order = ex.create_limit_order(SYMBOL, side, amount, price)
         print(f"Order placed: {order}")
         return order
