@@ -24,7 +24,7 @@ tp: {take_profit}
                 [
                     {'text': 'BUY LIMIT', 'callback_data': f'BUY_LIMIT:{entry}'},
                     {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'},
-                    {'text': 'Баланс', 'callback_data': 'BALANCE'}
+                    {'text': 'BALANCE', 'callback_data': 'BALANCE'}
                 ]
             ]
         }
