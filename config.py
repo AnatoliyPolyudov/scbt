@@ -6,7 +6,7 @@ load_dotenv()  # загружает переменные из .env
 
 SYMBOL = "BTC/USDT:USDT"
 TF = "1m"
-CAPITAL = 100
+CAPITAL = 500
 RISK_PERCENT = 1
 
 # Telegram
