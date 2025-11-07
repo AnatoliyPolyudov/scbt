@@ -202,7 +202,7 @@ import talib
 
 def wait_for_candle_close():
     current_time = int(time.time() * 1000)
-    candle_duration = 300000  # 5 minutes
+    candle_duration = 60000  # 1 minutes
     next_candle_time = (current_time // candle_duration + 1) * candle_duration
     wait_time = (next_candle_time - current_time) / 1000
     if wait_time > 0:
