@@ -3,6 +3,7 @@ import json
 import requests
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL, TF, CAPITAL, RISK_PERCENT
 from utils import calculate_position
+from exchange import ex  # подключаем объект биржи для запроса баланса
 
 def send_telegram_message(title, time_str, entry, stop_loss, take_profit):
     """
@@ -23,12 +24,12 @@ tp: {take_profit}
             'inline_keyboard': [
                 [
                     {'text': 'BUY LIMIT', 'callback_data': f'BUY_LIMIT:{entry}'},
-                    {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'}
+                    {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'},
+                    {'text': 'Баланс', 'callback_data': 'BALANCE'}
                 ]
             ]
         }
     else:
-        # Просто текст для уведомлений (High/Low break и другие)
         message = take_profit
         keyboard = None
     
@@ -53,6 +54,16 @@ def send_startup_message():
 def send_error_message(error):
     message = f"Bot error: {error}"
     send_telegram_message("error", "", "", "", message)
+
+def send_balance():
+    """Send current account balance to Telegram"""
+    try:
+        balance = ex.fetch_balance()
+        usdt_balance = balance['total'].get('USDT', 0)
+        message = f"Ваш баланс: {usdt_balance} USDT"
+        send_telegram_message("Баланс", "", "", "", message)
+    except Exception as e:
+        send_error_message(f"Ошибка получения баланса: {e}")
 
 def set_webhook():
     url = "http://194.87.238.84:5000/webhook"
