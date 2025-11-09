@@ -4,28 +4,30 @@ from config import SYMBOL
 
 reported_levels = {}  # Храним: { "4H_HIGH_3850.50": 1740000000000 }
 
-def fetch_candles_tf(timeframe, limit=1):
+def fetch_candles_tf(timeframe, limit=2):  # ✅ Берем 2 свечи чтобы получить предыдущую закрытую
     """Получить свечи для указанного таймфрейма"""
     ex = create_exchange()
     return ex.fetch_ohlcv(SYMBOL, timeframe, limit=limit)
 
 def find_current_levels():
-    """Найти уровни последних закрытых свечей 4H и 1H с их timestamp"""
+    """Найти уровни ПРЕДЫДУЩИХ закрытых свечей 4H и 1H"""
     levels = []
 
-    # 4H последняя закрытая свеча
-    c4 = fetch_candles_tf("4h", 1)
-    if c4:
-        timestamp = c4[0][0]  # Время открытия свечи
-        levels.append(("4H_HIGH", c4[0][2], timestamp))
-        levels.append(("4H_LOW",  c4[0][3], timestamp))
+    # 4H ПРЕДЫДУЩАЯ закрытая свеча (индекс -2)
+    c4 = fetch_candles_tf("4h", 2)  # ✅ Берем 2 свечи
+    if c4 and len(c4) >= 2:
+        prev_candle = c4[-2]  # ✅ ПРЕДЫДУЩАЯ закрытая свеча
+        timestamp = prev_candle[0]  # Время открытия свечи
+        levels.append(("4H_HIGH", prev_candle[2], timestamp))
+        levels.append(("4H_LOW",  prev_candle[3], timestamp))
 
-    # 1H последняя закрытая свеча
-    c1 = fetch_candles_tf("1h", 1)
-    if c1:
-        timestamp = c1[0][0]  # Время открытия свечи
-        levels.append(("1H_HIGH", c1[0][2], timestamp))
-        levels.append(("1H_LOW",  c1[0][3], timestamp))
+    # 1H ПРЕДЫДУЩАЯ закрытая свеча (индекс -2)
+    c1 = fetch_candles_tf("1h", 2)  # ✅ Берем 2 свечи
+    if c1 and len(c1) >= 2:
+        prev_candle = c1[-2]  # ✅ ПРЕДЫДУЩАЯ закрытая свеча
+        timestamp = prev_candle[0]  # Время открытия свечи
+        levels.append(("1H_HIGH", prev_candle[2], timestamp))
+        levels.append(("1H_LOW",  prev_candle[3], timestamp))
 
     return levels
 
