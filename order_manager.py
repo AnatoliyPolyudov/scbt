@@ -8,7 +8,6 @@ def handle_button_click(data):
     
     action = data.get("action")
     
-    # Для лимитных ордеров передается цена
     price = data.get("price")
     if price:
         price = float(price)
@@ -21,7 +20,6 @@ def handle_button_click(data):
         place_order("SELL", price)
     elif action == "BALANCE":
         print("Запрос баланса")
-        send_balance()  # отправляем баланс в телеграм
+        send_balance()
 
-# Подписка на событие кнопок
 subscribe("BUTTON_CLICK", handle_button_click)
