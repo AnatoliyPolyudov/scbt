@@ -8,9 +8,10 @@ from exchange import check_connection
 from telegram import send_startup_message, send_telegram_message, send_error_message
 from callback_handler import handle_callback
 from config import TELEGRAM_BOT_TOKEN, check_env_variables
-from levels import check_smc_levels
+from levels import check_smc_levels, check_new_candles, find_current_levels
 
 def get_updates(offset=None):
+    """Get updates from Telegram via polling"""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
     params = {'timeout': 30, 'offset': offset}
     try:
@@ -20,6 +21,7 @@ def get_updates(offset=None):
         return {'result': []}
 
 def process_updates():
+    """Process Telegram updates in background"""
     last_update_id = None
     print("Starting Telegram updates polling...")
 
@@ -41,6 +43,7 @@ def process_updates():
 def main():
     print("Starting SMC Levels Bot...")
     
+    # Проверяем переменные окружения перед запуском
     if not check_env_variables():
         print("Остановка бота из-за отсутствия переменных окружения")
         return
@@ -57,14 +60,16 @@ def main():
     print("Telegram polling started")
 
     last_signal_time = 0
+    last_candle_check_time = 0
 
     while True:
         try:
+            # Проверяем касание уровней
             signal = check_smc_levels()
 
             if signal:
                 current_time = int(time.time() * 1000)
-                if current_time - last_signal_time > 60000:
+                if current_time - last_signal_time > 60000:  # Защита от спама 60 сек
                     level_type = signal['type']
                     tf, l_type = level_type.split('_')
                     level_display = f"{tf.lower()} {l_type.lower()}"
@@ -73,8 +78,49 @@ def main():
                     send_telegram_message("level", "", "", "", message)
                     last_signal_time = current_time
 
+            # Проверяем смену свечей каждые 30 секунд
+            current_time = int(time.time() * 1000)
+            if current_time - last_candle_check_time > 30000:  # Каждые 30 секунд
+                new_candle = check_new_candles()
+                if new_candle:
+                    # Получаем актуальные уровни
+                    levels = find_current_levels()
+                    
+                    # Формируем текст уровней
+                    levels_text = ""
+                    levels_4h = []
+                    levels_1h = []
+                    
+                    for level_type, level_price, _ in levels:
+                        if level_type.startswith('4H'):
+                            levels_4h.append((level_type, level_price))
+                        else:
+                            levels_1h.append((level_type, level_price))
+                    
+                    # Уровни 4H
+                    for level_type, level_price in levels_4h:
+                        tf, l_type = level_type.split('_')
+                        level_display = f"{tf.lower()} {l_type.lower()}: {level_price}"
+                        levels_text += f"{level_display}\n"
+                    
+                    # Пустая строка между уровнями
+                    levels_text += "\n"
+                    
+                    # Уровни 1H
+                    for level_type, level_price in levels_1h:
+                        tf, l_type = level_type.split('_')
+                        level_display = f"{tf.lower()} {l_type.lower()}: {level_price}"
+                        levels_text += f"{level_display}\n"
+                    
+                    # Отправляем уведомление о новых уровнях
+                    timeframe = new_candle.replace('_NEW', '').lower()
+                    message = f"🔄 New {timeframe} Candle\n\n📊 Updated Levels:\n{levels_text}"
+                    send_telegram_message("update", "", "", "", message)
+                
+                last_candle_check_time = current_time
+
             gc.collect()
-            time.sleep(6)
+            time.sleep(6)  # Основная задержка цикла
 
         except KeyboardInterrupt:
             print("Bot stopped manually")
