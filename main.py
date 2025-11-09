@@ -61,28 +61,42 @@ def main():
 
     last_signal_time = 0
     last_candle_check_time = 0
+    last_levels_check_time = 0
+
+    print("🚀 Bot started successfully. Monitoring levels every 60 seconds...")
 
     while True:
         try:
-            # Проверяем касание уровней
-            signal = check_smc_levels()
+            current_time = int(time.time() * 1000)
+            
+            # ПРОВЕРЯЕМ ПРОБОЙ УРОВНЕЙ КАЖДУЮ МИНУТУ (60 секунд)
+            if current_time - last_levels_check_time > 60000:
+                print(f"\n🕒 [{time.strftime('%H:%M:%S')}] Checking for breakouts...")
+                signal = check_smc_levels()
 
-            if signal:
-                current_time = int(time.time() * 1000)
-                if current_time - last_signal_time > 60000:  # Защита от спама 60 сек
-                    level_type = signal['type']
-                    tf, l_type = level_type.split('_')
-                    level_display = f"{tf.lower()} {l_type.lower()}"
-                    
-                    message = f"🎯 Level Touch\n{level_display}: {signal['price']}"
-                    send_telegram_message("level", "", "", "", message)
-                    last_signal_time = current_time
+                if signal:
+                    if current_time - last_signal_time > 60000:  # Защита от спама
+                        print(f"📨 Sending Telegram notification: {signal}")
+                        level_type = signal['type']
+                        tf, l_type = level_type.split('_')
+                        direction = signal['direction']
+                        
+                        message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}"
+                        send_telegram_message("breakout", "", "", "", message)
+                        last_signal_time = current_time
+                    else:
+                        print("⏳ Signal skipped (spam protection - 60s cooldown)")
+                else:
+                    print("📊 No breakout signals detected")
+                
+                last_levels_check_time = current_time
 
             # Проверяем смену свечей каждые 30 секунд
-            current_time = int(time.time() * 1000)
-            if current_time - last_candle_check_time > 30000:  # Каждые 30 секунд
+            if current_time - last_candle_check_time > 30000:
                 new_candle = check_new_candles()
                 if new_candle:
+                    print(f"🔄 New candle detected: {new_candle}")
+                    
                     # Получаем актуальные уровни
                     levels = find_current_levels()
                     
@@ -116,6 +130,7 @@ def main():
                     timeframe = new_candle.replace('_NEW', '').lower()
                     message = f"🔄 New {timeframe} Candle\n\n📊 Updated Levels:\n{levels_text}"
                     send_telegram_message("update", "", "", "", message)
+                    print(f"📨 Sent levels update for {timeframe}")
                 
                 last_candle_check_time = current_time
 
@@ -123,10 +138,10 @@ def main():
             time.sleep(6)  # Основная задержка цикла
 
         except KeyboardInterrupt:
-            print("Bot stopped manually")
+            print("\n🛑 Bot stopped manually")
             break
         except Exception as e:
-            print(f"Bot error: {e}")
+            print(f"❌ Bot error: {e}")
             send_error_message(str(e))
             time.sleep(30)
 
