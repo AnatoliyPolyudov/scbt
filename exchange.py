@@ -2,7 +2,6 @@
 import ccxt
 from config import SYMBOL, TF, OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE
 
-# Глобальный экземпляр биржи
 _exchange_instance = None
 
 def create_exchange():
@@ -19,27 +18,27 @@ def create_exchange():
     })
 
 def get_exchange():
-    """Возвращает глобальный экземпляр биржи (один на весь бот)"""
+    """Возвращает глобальный экземпляр биржи"""
     global _exchange_instance
     if _exchange_instance is None:
         _exchange_instance = create_exchange()
         print("OKX exchange instance created")
     return _exchange_instance
 
-def fetch_candles(limit=3):
-    """Fetch candles from exchange - returns list instead of DataFrame"""
+def fetch_candles_tf(symbol, timeframe, limit=1):
+    """Универсальная функция для получения свечей"""
     try:
-        ex = get_exchange()  # ✅ Используем глобальный экземпляр
-        ohlcv = ex.fetch_ohlcv(SYMBOL, TF, limit=limit)
+        ex = get_exchange()
+        ohlcv = ex.fetch_ohlcv(symbol, timeframe, limit=limit)
         return ohlcv
     except Exception as e:
-        print(f"Error fetching data: {e}")
-        return []
+        print(f"Error fetching {timeframe} candles for {symbol}: {e}")
+        return None
 
 def check_connection():
     """Check exchange connection"""
     try:
-        ex = get_exchange()  # ✅ Используем глобальный экземпляр
+        ex = get_exchange()
         markets = ex.load_markets()
         print("OKX exchange connected successfully")
         return True
@@ -48,14 +47,9 @@ def check_connection():
         return False
 
 def place_order(action, price, amount=0.001):
-    """
-    Реальная постановка ордера.
-    action: 'BUY' или 'SELL'
-    price: цена ордера
-    amount: кол-во (по умолчанию 0.001)
-    """
+    """Реальная постановка ордера"""
     try:
-        ex = get_exchange()  # ✅ Используем глобальный экземпляр
+        ex = get_exchange()
         side = "buy" if action.upper() == "BUY" else "sell"
         order = ex.create_limit_order(SYMBOL, side, amount, price)
         print(f"Order placed: {order}")
