@@ -74,4 +74,59 @@ def send_startup_message():
         
         for level_type, level_price in levels_4h:
             tf, l_type = level_type.split('_')
-            level_display = f"{tf
+            level_display = f"{tf.lower()} {l_type.lower()}: {level_price}"
+            levels_text += f"{level_display}\n"
+        
+        levels_text += "\n"
+        
+        for level_type, level_price in levels_1h:
+            tf, l_type = level_type.split('_')
+            level_display = f"{tf.lower()} {l_type.lower()}: {level_price}"
+            levels_text += f"{level_display}\n"
+        
+        message = f"""🚀 Started
+symbol: {SYMBOL}
+tf: {TF}
+capital: {CAPITAL} USDT
+risk: {RISK_PERCENT}%
+balance: {rounded_balance} USDT
+
+📊 Current Levels
+{levels_text}"""
+        
+        send_telegram_message("startup", "", "", "", message)
+    except Exception as e:
+        message = f"""🚀 Started
+symbol: {SYMBOL}
+tf: {TF}
+capital: {CAPITAL} USDT  
+risk: {RISK_PERCENT}%
+balance: error
+Levels: error - {e}"""
+        send_telegram_message("startup", "", "", "", message)
+
+def send_error_message(error):
+    message = f"Bot error: {error}"
+    send_telegram_message("error", "", "", "", message)
+
+def send_balance():
+    try:
+        from exchange import get_exchange
+        ex = get_exchange()
+        balance = ex.fetch_balance()
+        usdt_balance = balance['total'].get('USDT', 0)
+        message = f"Balance: {round(usdt_balance, 1)} USDT"
+        send_telegram_message("BALANCE", "", "", "", message)
+    except Exception as e:
+        send_error_message(f"Ошибка получения баланса: {e}")
+
+def set_webhook():
+    url = "http://194.87.238.84:5000/webhook"
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
+            data={"url": url}
+        )
+        print(f"Webhook set: {response.status_code}")
+    except Exception as e:
+        print(f"Error setting webhook: {e}")
