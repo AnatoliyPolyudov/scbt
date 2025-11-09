@@ -5,10 +5,10 @@ import threading
 import gc
 import requests
 from exchange import check_connection
-from patterns import check_scob_pattern, wait_for_candle_close
 from telegram import send_startup_message, send_telegram_message, send_error_message
 from callback_handler import handle_callback
-from config import TELEGRAM_BOT_TOKEN, check_env_variables  # добавляем проверку
+from config import TELEGRAM_BOT_TOKEN, check_env_variables
+from levels import check_smc_levels  # Импорт модуля уровней
 
 def get_updates(offset=None):
     """Get updates from Telegram via polling"""
@@ -41,14 +41,14 @@ def process_updates():
             time.sleep(5)
 
 def main():
-    print("Starting ScoB Bot...")
+    print("Starting SMC Levels Bot...")
     
     # Проверяем переменные окружения перед запуском
     if not check_env_variables():
         print("Остановка бота из-за отсутствия переменных окружения")
         return
     
-    print("Monitoring patterns...")
+    print("Monitoring 4H/1H levels...")
 
     send_startup_message()
 
@@ -63,23 +63,18 @@ def main():
 
     while True:
         try:
-            wait_for_candle_close()
-            signal = check_scob_pattern()  # возвращает один сигнал
+            signal = check_smc_levels()  # Проверка уровней
 
             if signal:
                 current_time = int(time.time() * 1000)
-                if current_time - last_signal_time > 60000:
-                    send_telegram_message(
-                        signal["title"],
-                        signal["time"],
-                        signal["entry"],
-                        signal["stop_loss"],
-                        signal["take_profit"]
-                    )
+                if current_time - last_signal_time > 60000:  # Защита от спама 60 сек
+                    # Формируем сообщение о касании уровня
+                    message = f"🎯 LEVEL TOUCH\nType: {signal['type']}\nPrice: {signal['price']}"
+                    send_telegram_message("level", "", "", "", message)
                     last_signal_time = current_time
 
             gc.collect()
-            time.sleep(6)
+            time.sleep(6)  # Проверяем каждые 6 секунд
 
         except KeyboardInterrupt:
             print("Bot stopped manually")
