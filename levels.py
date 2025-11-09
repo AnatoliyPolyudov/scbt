@@ -3,6 +3,8 @@ from exchange import fetch_candles_tf
 from config import SYMBOL
 
 reported_levels = {}
+last_4h_timestamp = None
+last_1h_timestamp = None
 
 def find_current_levels():
     """Найти уровни предыдущих закрытых свечей 4H и 1H"""
@@ -48,6 +50,37 @@ def check_level_touch(current_price, levels):
                     "price": level_price
                 }
     return None
+
+def check_new_candles():
+    """Проверить смену свечей 4H и 1H"""
+    global last_4h_timestamp, last_1h_timestamp
+    
+    try:
+        # Проверяем 4H свечу
+        c4 = fetch_candles_tf(SYMBOL, "4h", 1)
+        if c4:
+            current_4h_timestamp = c4[0][0]
+            if last_4h_timestamp is None:
+                last_4h_timestamp = current_4h_timestamp
+            elif current_4h_timestamp != last_4h_timestamp:
+                last_4h_timestamp = current_4h_timestamp
+                return "4H_NEW"
+        
+        # Проверяем 1H свечу
+        c1 = fetch_candles_tf(SYMBOL, "1h", 1)
+        if c1:
+            current_1h_timestamp = c1[0][0]
+            if last_1h_timestamp is None:
+                last_1h_timestamp = current_1h_timestamp
+            elif current_1h_timestamp != last_1h_timestamp:
+                last_1h_timestamp = current_1h_timestamp
+                return "1H_NEW"
+                
+        return None
+        
+    except Exception as e:
+        print(f"Error checking new candles: {e}")
+        return None
 
 def check_smc_levels():
     """Основная функция проверки уровней"""
