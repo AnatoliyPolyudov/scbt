@@ -7,9 +7,9 @@ from utils import calculate_position
 def send_telegram_message(title, time_str, entry, stop_loss, take_profit):
     """
     Send a message to Telegram.
-    If entry and stop_loss are set, include position info.
     """
     if entry and stop_loss:
+        # Логика для ордеров (если понадобится в будущем)
         size, position_info = calculate_position(float(entry), float(stop_loss))
         message = f"""scob {title}
 {time_str}
@@ -22,15 +22,20 @@ tp: {take_profit}
         keyboard = {
             'inline_keyboard': [
                 [
-                    {'text': 'BUY LIMIT', 'callback_data': f'BUY_LIMIT:{entry}'},
-                    {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'},
                     {'text': 'BALANCE', 'callback_data': 'BALANCE'}
                 ]
             ]
         }
     else:
+        # Логика для уведомлений об уровнях и стартапа
         message = take_profit
-        keyboard = None
+        keyboard = {
+            'inline_keyboard': [
+                [
+                    {'text': 'BALANCE', 'callback_data': 'BALANCE'}
+                ]
+            ]
+        }
     
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -49,15 +54,38 @@ tp: {take_profit}
 def send_startup_message():
     try:
         from exchange import create_exchange
+        from levels import find_current_levels  # Импорт модуля уровней
+        
         ex = create_exchange()
         balance = ex.fetch_balance()
         usdt_balance = balance['total'].get('USDT', 0)
         rounded_balance = round(usdt_balance, 1)
         
-        message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%\n{rounded_balance} USDT"
+        # Получаем текущие уровни
+        levels = find_current_levels()
+        levels_text = ""
+        for level_type, level_price, _ in levels:
+            levels_text += f"{level_type}: {level_price}\n"
+        
+        message = f"""🚀 SMC Levels Bot Started
+Symbol: {SYMBOL}
+TF: {TF}
+Capital: {CAPITAL} USDT
+Risk: {RISK_PERCENT}%
+Balance: {rounded_balance} USDT
+
+📊 Current Levels:
+{levels_text}"""
+        
         send_telegram_message("startup", "", "", "", message)
     except Exception as e:
-        message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%\nBalance: error"
+        message = f"""🚀 SMC Levels Bot Started
+Symbol: {SYMBOL}
+TF: {TF}
+Capital: {CAPITAL} USDT  
+Risk: {RISK_PERCENT}%
+Balance: error
+Levels: error - {e}"""
         send_telegram_message("startup", "", "", "", message)
 
 def send_error_message(error):
@@ -72,7 +100,7 @@ def send_balance():
         ex = create_exchange()
         balance = ex.fetch_balance()
         usdt_balance = balance['total'].get('USDT', 0)
-        message = f"{round(usdt_balance, 1)} USDT"
+        message = f"Balance: {round(usdt_balance, 1)} USDT"
         send_telegram_message("BALANCE", "", "", "", message)
     except Exception as e:
         send_error_message(f"Ошибка получения баланса: {e}")
