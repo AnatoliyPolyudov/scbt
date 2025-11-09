@@ -1,12 +1,12 @@
 # levels.py
-from exchange import create_exchange
+from exchange import get_exchange  # ✅ Импортируем get_exchange
 from config import SYMBOL
 
 reported_levels = {}  # Храним: { "4H_HIGH_3850.50": 1740000000000 }
 
-def fetch_candles_tf(timeframe, limit=2):  # ✅ Берем 2 свечи чтобы получить предыдущую закрытую
+def fetch_candles_tf(timeframe, limit=2):
     """Получить свечи для указанного таймфрейма"""
-    ex = create_exchange()
+    ex = get_exchange()  # ✅ Используем глобальный экземпляр
     return ex.fetch_ohlcv(SYMBOL, timeframe, limit=limit)
 
 def find_current_levels():
@@ -14,17 +14,17 @@ def find_current_levels():
     levels = []
 
     # 4H ПРЕДЫДУЩАЯ закрытая свеча (индекс -2)
-    c4 = fetch_candles_tf("4h", 2)  # ✅ Берем 2 свечи
+    c4 = fetch_candles_tf("4h", 2)
     if c4 and len(c4) >= 2:
-        prev_candle = c4[-2]  # ✅ ПРЕДЫДУЩАЯ закрытая свеча
+        prev_candle = c4[-2]  # ПРЕДЫДУЩАЯ закрытая свеча
         timestamp = prev_candle[0]  # Время открытия свечи
         levels.append(("4H_HIGH", prev_candle[2], timestamp))
         levels.append(("4H_LOW",  prev_candle[3], timestamp))
 
     # 1H ПРЕДЫДУЩАЯ закрытая свеча (индекс -2)
-    c1 = fetch_candles_tf("1h", 2)  # ✅ Берем 2 свечи
+    c1 = fetch_candles_tf("1h", 2)
     if c1 and len(c1) >= 2:
-        prev_candle = c1[-2]  # ✅ ПРЕДЫДУЩАЯ закрытая свеча
+        prev_candle = c1[-2]  # ПРЕДЫДУЩАЯ закрытая свеча
         timestamp = prev_candle[0]  # Время открытия свечи
         levels.append(("1H_HIGH", prev_candle[2], timestamp))
         levels.append(("1H_LOW",  prev_candle[3], timestamp))
@@ -52,7 +52,7 @@ def check_level_touch(current_price, levels):
 
 def check_smc_levels():
     """Основная функция проверки уровней"""
-    ex = create_exchange()
+    ex = get_exchange()  # ✅ Используем глобальный экземпляр
     # текущая 1m свеча (close) - для точного мониторинга
     c = ex.fetch_ohlcv(SYMBOL, "1m", limit=1)
     if not c:
