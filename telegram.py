@@ -54,7 +54,7 @@ tp: {take_profit}
 def send_startup_message():
     try:
         from exchange import create_exchange
-        from levels import find_current_levels  # Импорт модуля уровней
+        from levels import find_current_levels
         
         ex = create_exchange()
         balance = ex.fetch_balance()
@@ -63,28 +63,33 @@ def send_startup_message():
         
         # Получаем текущие уровни
         levels = find_current_levels()
+        
+        # Формируем текст уровней в нужном формате
         levels_text = ""
         for level_type, level_price, _ in levels:
-            levels_text += f"{level_type}: {level_price}\n"
+            # Преобразуем тип в нужный формат: "4h high", "1h low" и т.д.
+            tf, l_type = level_type.split('_')
+            level_display = f"{tf.lower()} {l_type.lower()}: {level_price}"
+            levels_text += f"{level_display}\n"
         
-        message = f"""🚀 SMC Levels Bot Started
-Symbol: {SYMBOL}
-TF: {TF}
-Capital: {CAPITAL} USDT
-Risk: {RISK_PERCENT}%
-Balance: {rounded_balance} USDT
+        message = f"""🚀 Started
+symbol: {SYMBOL}
+tf: {TF}
+capital: {CAPITAL} USDT
+risk: {RISK_PERCENT}%
+balance: {rounded_balance} USDT
 
-📊 Current Levels:
+📊 Current Levels
 {levels_text}"""
         
         send_telegram_message("startup", "", "", "", message)
     except Exception as e:
-        message = f"""🚀 SMC Levels Bot Started
-Symbol: {SYMBOL}
-TF: {TF}
-Capital: {CAPITAL} USDT  
-Risk: {RISK_PERCENT}%
-Balance: error
+        message = f"""🚀 Started
+symbol: {SYMBOL}
+tf: {TF}
+capital: {CAPITAL} USDT  
+risk: {RISK_PERCENT}%
+balance: error
 Levels: error - {e}"""
         send_telegram_message("startup", "", "", "", message)
 
