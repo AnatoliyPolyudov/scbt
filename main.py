@@ -69,13 +69,13 @@ def main():
         try:
             current_time = int(time.time() * 1000)
             
-            # ✅ ПРОСТОЙ ПОИСК FVG (после закрытия свечи)
+            # ✅ ПРОСТОЙ ПОИСК FVG (ТОЛЬКО ПОСЛЕ ЗАКРЫТИЯ СВЕЧИ)
             from callback_handler import fvg_search_active
             if fvg_search_active:
-                # Проверяем только если прошло больше 5 секунд новой минуты
+                # Проверяем FVG только в первые 10 секунд новой минуты (после закрытия свечи)
                 current_second = int(time.time()) % 60
-                if current_second > 5:  
-                    print(f"🔍 FVG SEARCH - checking after candle close...")
+                if current_second < 10:  # Только с 00 по 09 секунду каждой минуты
+                    print(f"🔍 FVG SEARCH - checking at {current_second}s after candle close...")
                     fvg_signal = detect_fvg()
                     if fvg_signal:
                         print(f"🎯 FVG found: {fvg_signal['type']}")
@@ -84,8 +84,8 @@ def main():
                     else:
                         print("❌ No FVG found")
                     
-                    # Ждем до следующей минуты
-                    time.sleep(60 - current_second)
+                    # Ждем 50 секунд до следующей проверки (чтобы не проверять снова в эту минуту)
+                    time.sleep(50)
             
             # ПРОВЕРЯЕМ ПРОБОЙ УРОВНЕЙ КАЖДУЮ МИНУТУ (60 секунд)
             if current_time - last_levels_check_time > 60000:
