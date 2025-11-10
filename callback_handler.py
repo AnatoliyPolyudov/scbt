@@ -33,12 +33,10 @@ def handle_callback(query_data):
         if fvg_search_active:
             print("🎯 FVG SEARCH ACTIVATED")
             send_telegram_simple_message("🎯 FVG SEARCH ACTIVATED")
-            publish("BUTTON_CLICK", {"action": "FVG_SEARCH_ON"})
         else:
             print("⏹️ FVG SEARCH DEACTIVATED")  
             send_telegram_simple_message("⏹️ FVG SEARCH DEACTIVATED")
-            publish("BUTTON_CLICK", {"action": "FVG_SEARCH_OFF"})
         
     else:
-        # Остальные кнопки (BALANCE и другие)
+        # Остальные кнопки
         publish("BUTTON_CLICK", {"action": query_data})
