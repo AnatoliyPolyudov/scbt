@@ -144,6 +144,66 @@ def place_order(action, price, amount=0.001):
         return None
 
 
+===== fvg_detector.py =====
+
+
+# fvg_detector.py
+from exchange import fetch_candles_tf
+from config import SYMBOL
+
+reported_fvg = {}
+
+def detect_fvg():
+    """Обнаружить FVG на 1M таймфрейме"""
+    try:
+        # Берем последние 3 свечи 1M
+        candles = fetch_candles_tf(SYMBOL, "1m", 3)
+        if len(candles) < 3:
+            return None
+        
+        current = candles[0]  # Текущая свеча [timestamp, o, h, l, c, volume]
+        prev1 = candles[1]    # Предыдущая свеча  
+        prev2 = candles[2]    # Свеча 2 назад
+        
+        current_low = current[3]
+        current_high = current[2]
+        prev2_high = prev2[2]
+        prev2_low = prev2[3]
+        
+        # МЕДВЕЖИЙ FVG (разрыв вниз): high текущей < low двух свечей назад
+        if current_high < prev2_low:
+            fvg_type = "BEAR_FVG"
+            top = prev2_low
+            bottom = current_high
+            print(f"DEBUG: 🐻 BEAR FVG detected - Price gap down: {current_high} < {prev2_low}")
+        
+        # БЫЧИЙ FVG (разрыв вверх): low текущей > high двух свечей назад
+        elif current_low > prev2_high:
+            fvg_type = "BULL_FVG" 
+            top = current_low
+            bottom = prev2_high
+            print(f"DEBUG: 🐂 BULL FVG detected - Price gap up: {current_low} > {prev2_high}")
+        
+        else:
+            return None
+        
+        # Проверяем не сообщали ли уже об этом FVG
+        fvg_key = f"{fvg_type}_{top}_{bottom}"
+        if fvg_key not in reported_fvg:
+            reported_fvg[fvg_key] = True
+            return {
+                "type": fvg_type,
+                "top": top,
+                "bottom": bottom,
+                "direction": "BEAR" if fvg_type == "BEAR_FVG" else "BULL"
+            }
+        
+        return None
+        
+    except Exception as e:
+        print(f"FVG detection error: {e}")
+        return None
+
 ===== levels.py =====
 
 
@@ -151,7 +211,7 @@ def place_order(action, price, amount=0.001):
 from exchange import fetch_candles_tf
 from config import SYMBOL
 
-reported_breakouts = {}
+reported_breakouts = {}  # Храним ПРОБИТЫЕ уровни
 last_4h_timestamp = None
 last_1h_timestamp = None
 
@@ -186,8 +246,8 @@ def find_current_levels():
         return []
 
 def check_level_breakout(current_price, levels):
-    """Проверить пробой уровней"""
-    print(f"DEBUG: Checking breakouts - Current price: {current_price}")
+    """Проверить ПРОБОЙ уровней"""
+    print(f"DEBUG: Checking BREAKOUTS - Current price: {current_price}")
     
     for level_type, level_price, level_timestamp in levels:
         key = f"{level_type}_{level_price}"
@@ -195,13 +255,11 @@ def check_level_breakout(current_price, levels):
         # Проверяем был ли уже пробой этого уровня
         if key in reported_breakouts:
             if reported_breakouts[key] != level_timestamp:
-                print(f"DEBUG: Level reset - {key} (new candle)")
                 del reported_breakouts[key]  # Сброс при смене свечи
             else:
-                print(f"DEBUG: Level already reported - {key}")
-                continue
+                continue  # Уже сообщали о пробое
         
-        # Проверяем пробой ВВЕРХ (для HIGH уровней)
+        # ПРОБОЙ ВВЕРХ: цена > HIGH уровня
         if level_type.endswith('HIGH') and current_price > level_price:
             print(f"DEBUG: 🟢 BREAKOUT UP - {level_type} {current_price} > {level_price}")
             reported_breakouts[key] = level_timestamp
@@ -212,18 +270,16 @@ def check_level_breakout(current_price, levels):
                 "current": current_price
             }
         
-        # Проверяем пробой ВНИЗ (для LOW уровней)  
+        # ПРОБОЙ ВНИЗ: цена < LOW уровня  
         elif level_type.endswith('LOW') and current_price < level_price:
             print(f"DEBUG: 🔴 BREAKOUT DOWN - {level_type} {current_price} < {level_price}")
             reported_breakouts[key] = level_timestamp
             return {
                 "type": level_type,
                 "price": level_price, 
-                "direction": "DOWN",
+                "direction": "DOWN", 
                 "current": current_price
             }
-        else:
-            print(f"DEBUG: No breakout - {level_type} {current_price} vs {level_price}")
     
     print("DEBUG: No breakouts detected")
     return None
@@ -260,9 +316,9 @@ def check_new_candles():
         return None
 
 def check_smc_levels():
-    """Основная функция проверки уровней"""
+    """Основная функция проверки уровней - ИСПОЛЬЗУЕМ ПРОБОЙ"""
     try:
-        print("DEBUG: === LEVELS CHECK STARTED ===")
+        print("DEBUG: === BREAKOUT CHECK STARTED ===")
         current_candle = fetch_candles_tf(SYMBOL, "1m", 1)
         if not current_candle:
             print("DEBUG: No 1m candle data")
@@ -272,20 +328,19 @@ def check_smc_levels():
         print(f"DEBUG: Current 1m price: {current_price}")
         
         levels = find_current_levels()
-        result = check_level_breakout(current_price, levels)
+        result = check_level_breakout(current_price, levels)  # ✅ ИСПОЛЬЗУЕМ ПРОБОЙ
         
         if result:
             print(f"DEBUG: 🚨 BREAKOUT SIGNAL: {result}")
         else:
             print("DEBUG: No breakout signal")
             
-        print("DEBUG: === LEVELS CHECK FINISHED ===")
+        print("DEBUG: === BREAKOUT CHECK FINISHED ===")
         return result
         
     except Exception as e:
         print(f"ERROR in check_smc_levels: {e}")
         return None
-
 
 ===== main.py =====
 
@@ -301,6 +356,7 @@ from telegram import send_startup_message, send_telegram_message, send_error_mes
 from callback_handler import handle_callback
 from config import TELEGRAM_BOT_TOKEN, check_env_variables
 from levels import check_smc_levels, check_new_candles, find_current_levels
+from fvg_detector import detect_fvg
 
 def get_updates(offset=None):
     """Get updates from Telegram via polling"""
@@ -340,7 +396,7 @@ def main():
         print("Остановка бота из-за отсутствия переменных окружения")
         return
     
-    print("Monitoring 4H/1H levels...")
+    print("Monitoring 4H/1H levels + FVG...")
 
     send_startup_message()
 
@@ -368,12 +424,34 @@ def main():
 
                 if signal:
                     if current_time - last_signal_time > 60000:  # Защита от спама
-                        print(f"📨 Sending Telegram notification: {signal}")
+                        print(f"📨 Level breakout detected: {signal}")
+                        
+                        # ✅ ПОИСК КОНТРАСТНОГО FVG ПОСЛЕ ПРОБОЯ
+                        fvg_signal = detect_fvg()
+                        print(f"DEBUG: FVG check result: {fvg_signal}")
+                        
                         level_type = signal['type']
                         tf, l_type = level_type.split('_')
                         direction = signal['direction']
                         
-                        message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}"
+                        if signal['direction'] == "UP":
+                            # После пробоя ВВЕРХ ищем МЕДВЕЖИЙ FVG
+                            if fvg_signal and fvg_signal['direction'] == "BEAR":
+                                message = f"🎯 Breakout + FVG Setup\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}\n🐻 Bear FVG: {fvg_signal['bottom']} - {fvg_signal['top']}"
+                                print("🚨 BULL BREAKOUT + BEAR FVG - SELL SETUP")
+                            else:
+                                message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}"
+                                print("📈 BULL BREAKOUT ONLY")
+                        
+                        elif signal['direction'] == "DOWN":
+                            # После пробоя ВНИЗ ищем БЫЧИЙ FVG
+                            if fvg_signal and fvg_signal['direction'] == "BULL":
+                                message = f"🎯 Breakout + FVG Setup\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}\n🐂 Bull FVG: {fvg_signal['bottom']} - {fvg_signal['top']}"
+                                print("🚨 BEAR BREAKOUT + BULL FVG - BUY SETUP")
+                            else:
+                                message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}"
+                                print("📉 BEAR BREAKOUT ONLY")
+                        
                         send_telegram_message("breakout", "", "", "", message)
                         last_signal_time = current_time
                     else:
@@ -439,7 +517,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 ===== order_manager.py =====
 
