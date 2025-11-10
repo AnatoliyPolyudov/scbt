@@ -1,106 +1,25 @@
-# telegram.py
-import json
-import requests
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL, TF, CAPITAL, RISK_PERCENT
-from utils import calculate_position
-from callback_handler import fvg_search_active  # Импортируем флаг состояния
+# callback_handler.py
+from event_bus import publish
 
-def send_telegram_message(title, time_str, entry, stop_loss, take_profit, keyboard=None):
-    """
-    Send a message to Telegram.
-    """
-    message = take_profit  # Используем только текст сообщения
+# Глобальный флаг ручного управления
+fvg_search_active = False
+
+def handle_callback(query_data):
+    global fvg_search_active
     
-    # Если клавиатура не передана, используем стандартную
-    if keyboard is None:
-        # Динамический текст кнопки FVG SEARCH
-        button_text = "🔍 FVG SEARCH" if not fvg_search_active else "⏹️ FVG SEARCH"
-        
-        keyboard = {
-            'inline_keyboard': [
-                [
-                    {'text': button_text, 'callback_data': 'TOGGLE_FVG_SEARCH'}
-                ],
-                [
-                    {'text': 'BALANCE', 'callback_data': 'BALANCE'}
-                ]
-            ]
-        }
+    print("CALLBACK_HANDLER: Received callback:", query_data)
     
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {
-            'chat_id': TELEGRAM_CHAT_ID,
-            'text': message,
-            'parse_mode': 'HTML',
-            'reply_markup': json.dumps(keyboard) if keyboard else None
-        }
-        response = requests.post(url, data=payload, timeout=10)
-        return response.status_code == 200
-    except Exception as e:
-        print(f"TELEGRAM_ERROR: {e}")
-        return False
-
-def send_startup_message():
-    try:
-        from exchange import get_exchange
-        from levels import find_current_levels
+    if query_data == "TOGGLE_FVG_SEARCH":
+        # Переключаем состояние
+        fvg_search_active = not fvg_search_active
         
-        ex = get_exchange()
-        balance = ex.fetch_balance()
-        usdt_balance = balance['total'].get('USDT', 0)
-        rounded_balance = round(usdt_balance, 1)
+        if fvg_search_active:
+            print("🎯 FVG SEARCH ACTIVATED")
+            publish("BUTTON_CLICK", {"action": "FVG_SEARCH_ON"})
+        else:
+            print("⏹️ FVG SEARCH DEACTIVATED")  
+            publish("BUTTON_CLICK", {"action": "FVG_SEARCH_OFF"})
         
-        levels = find_current_levels()
-        
-        levels_4h = []
-        levels_1h = []
-        
-        for level_type, level_price, _ in levels:
-            if level_type.startswith('4H'):
-                levels_4h.append((level_type, level_price))
-            else:
-                levels_1h.append((level_type, level_price))
-        
-        levels_text = ""
-        
-        for level_type, level_price in levels_4h:
-            tf, l_type = level_type.split('_')
-            level_display = f"{tf.lower()} {l_type.lower()}: {level_price}"
-            levels_text += f"{level_display}\n"
-        
-        levels_text += "\n"
-        
-        for level_type, level_price in levels_1h:
-            tf, l_type = level_type.split('_')
-            level_display = f"{tf.lower()} {l_type.lower()}: {level_price}"
-            levels_text += f"{level_display}\n"
-        
-        message = f"""🚀 Started
-{SYMBOL}
-
-📊 Current Levels
-{levels_text}"""
-        
-        send_telegram_message("startup", "", "", "", message)
-    except Exception as e:
-        message = f"""🚀 Started
-{SYMBOL}
-
-Levels: error - {e}"""
-        send_telegram_message("startup", "", "", "", message)
-
-def send_error_message(error):
-    message = f"Bot error: {error}"
-    send_telegram_message("error", "", "", "", message)
-
-def send_balance():
-    try:
-        from exchange import get_exchange
-        ex = get_exchange()
-        balance = ex.fetch_balance()
-        usdt_balance = balance['total'].get('USDT', 0)
-        message = f"Balance: {round(usdt_balance, 1)} USDT"
-        send_telegram_message("BALANCE", "", "", "", message)
-    except Exception as e:
-        send_error_message(f"Ошибка получения баланса: {e}")
+    else:
+        # Остальные кнопки (BALANCE и другие)
+        publish("BUTTON_CLICK", {"action": query_data})
