@@ -1,8 +1,7 @@
 # telegram.py
 import json
 import requests
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL, TF, CAPITAL, RISK_PERCENT
-from utils import calculate_position
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL
 
 def send_telegram_message(title, time_str, entry, stop_loss, take_profit, keyboard=None):
     """
@@ -40,7 +39,6 @@ def send_telegram_message(title, time_str, entry, stop_loss, take_profit, keyboa
         print(f"TELEGRAM_ERROR: {e}")
         return False
 
-# Остальные функции без изменений...
 def send_startup_message():
     try:
         from exchange import get_exchange
@@ -93,5 +91,3 @@ Levels: error - {e}"""
 def send_error_message(error):
     message = f"Bot error: {error}"
     send_telegram_message("error", "", "", "", message)
-
-# Функцию send_balance можно удалить, так как кнопка убрана
