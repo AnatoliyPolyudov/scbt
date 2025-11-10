@@ -3,15 +3,14 @@ import time
 import threading
 import gc
 import requests
-from exchange import check_connection
+from exchange import check_connection, fetch_candles_tf
 from telegram import send_startup_message, send_telegram_message, send_error_message
 from callback_handler import handle_callback
-from config import TELEGRAM_BOT_TOKEN, check_env_variables
+from config import TELEGRAM_BOT_TOKEN, check_env_variables, SYMBOL
 from levels import check_smc_levels, check_new_candles, find_current_levels
 from fvg_detector import detect_fvg
 
 def get_updates(offset=None):
-    """Get updates from Telegram via polling"""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
     params = {'timeout': 30, 'offset': offset}
     try:
@@ -21,7 +20,6 @@ def get_updates(offset=None):
         return {'result': []}
 
 def process_updates():
-    """Process Telegram updates in background"""
     last_update_id = None
     print("Starting Telegram updates polling...")
 
@@ -43,7 +41,6 @@ def process_updates():
 def main():
     print("Starting SMC Levels Bot...")
     
-    # Проверяем переменные окружения перед запуском
     if not check_env_variables():
         print("Остановка бота из-за отсутствия переменных окружения")
         return
@@ -63,98 +60,85 @@ def main():
     last_candle_check_time = 0
     last_levels_check_time = 0
 
-    print("🚀 Bot started successfully. Monitoring levels every 60 seconds...")
+    # ✅ Для контроля проверки FVG 1 раз на свечу
+    last_fvg_candle = None
+
+    print("🚀 Bot started successfully. Monitoring...")
 
     while True:
         try:
             current_time = int(time.time() * 1000)
-            
-            # ✅ ПРОСТОЙ ПОИСК FVG (ТОЛЬКО ПОСЛЕ ЗАКРЫТИЯ СВЕЧИ)
+
+            # ✅ FVG CHECK (по закрытой свече и без блокировки цикла)
             from callback_handler import fvg_search_active
             if fvg_search_active:
-                # Проверяем FVG только в первые 10 секунд новой минуты (после закрытия свечи)
-                current_second = int(time.time()) % 60
-                if current_second < 10:  # Только с 00 по 09 секунду каждой минуты
-                    print(f"🔍 FVG SEARCH - checking at {current_second}s after candle close...")
-                    fvg_signal = detect_fvg()
-                    if fvg_signal:
-                        print(f"🎯 FVG found: {fvg_signal['type']}")
-                        message = f"🎯 FVG Found\nType: {fvg_signal['type']}\nRange: {fvg_signal['bottom']} - {fvg_signal['top']}"
-                        send_telegram_message("fvg", "", "", "", message)
-                    else:
-                        print("❌ No FVG found")
-                    
-                    # Ждем 50 секунд до следующей проверки (чтобы не проверять снова в эту минуту)
-                    time.sleep(50)
-            
-            # ПРОВЕРЯЕМ ПРОБОЙ УРОВНЕЙ КАЖДУЮ МИНУТУ (60 секунд)
+                candles = fetch_candles_tf(SYMBOL, "1m", 2)
+                if candles and len(candles) >= 2:
+                    last_closed_ts = candles[-2][0]
+
+                    if last_fvg_candle != last_closed_ts:
+                        last_fvg_candle = last_closed_ts
+
+                        print("🔍 FVG SEARCH: Checking closed candle...")
+                        fvg_signal = detect_fvg()
+
+                        if fvg_signal:
+                            print(f"🎯 FVG FOUND: {fvg_signal}")
+                            message = f"""🎯 FVG Found\nType: {fvg_signal['type']}\nRange: {fvg_signal['bottom']} - {fvg_signal['top']}"""
+                            send_telegram_message("fvg", "", "", "", message)
+                        else:
+                            print("❌ No FVG this candle")
+
+            # ✅ Проверка пробоев уровней (1 раз в минуту)
             if current_time - last_levels_check_time > 60000:
                 print(f"\n🕒 [{time.strftime('%H:%M:%S')}] Checking for breakouts...")
                 signal = check_smc_levels()
 
                 if signal:
-                    if current_time - last_signal_time > 60000:  # Защита от спама
+                    if current_time - last_signal_time > 60000:
                         print(f"📨 Level breakout detected: {signal}")
-                        
-                        # Формируем сообщение о пробое
                         level_type = signal['type']
                         direction = signal['direction']
                         message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}"
-                        
                         send_telegram_message("breakout", "", "", "", message)
                         last_signal_time = current_time
                     else:
-                        print("⏳ Signal skipped (spam protection - 60s cooldown)")
+                        print("⏳ Signal skipped (60s cooldown)")
                 else:
                     print("📊 No breakout signals detected")
-                
+
                 last_levels_check_time = current_time
 
-            # Проверяем смену свечей каждые 60 секунд
+            # ✅ Проверка обновления свечей 4H/1H
             if current_time - last_candle_check_time > 60000:
                 new_candle = check_new_candles()
                 if new_candle:
                     print(f"🔄 New candle detected: {new_candle}")
-                    
-                    # Получаем актуальные уровни
                     levels = find_current_levels()
-                    
-                    # Формируем текст уровней
+
                     levels_text = ""
-                    levels_4h = []
-                    levels_1h = []
-                    
-                    for level_type, level_price, _ in levels:
-                        if level_type.startswith('4H'):
-                            levels_4h.append((level_type, level_price))
-                        else:
-                            levels_1h.append((level_type, level_price))
-                    
-                    # Уровни 4H
-                    for level_type, level_price in levels_4h:
-                        tf, l_type = level_type.split('_')
-                        level_display = f"{tf.lower()} {l_type.lower()}: {level_price}"
-                        levels_text += f"{level_display}\n"
-                    
-                    # Пустая строка между уровнями
+
+                    levels_4h = [(t,p) for t,p,_ in levels if t.startswith('4H')]
+                    levels_1h = [(t,p) for t,p,_ in levels if t.startswith('1H')]
+
+                    for t,p in levels_4h:
+                        tf, l_type = t.split('_')
+                        levels_text += f"{tf.lower()} {l_type.lower()}: {p}\n"
+
                     levels_text += "\n"
-                    
-                    # Уровни 1H
-                    for level_type, level_price in levels_1h:
-                        tf, l_type = level_type.split('_')
-                        level_display = f"{tf.lower()} {l_type.lower()}: {level_price}"
-                        levels_text += f"{level_display}\n"
-                    
-                    # Отправляем уведомление о новых уровнях
+
+                    for t,p in levels_1h:
+                        tf, l_type = t.split('_')
+                        levels_text += f"{tf.lower()} {l_type.lower()}: {p}\n"
+
                     timeframe = new_candle.replace('_NEW', '').lower()
                     message = f"🔄 New {timeframe} Candle\n\n📊 Updated Levels:\n{levels_text}"
                     send_telegram_message("update", "", "", "", message)
-                    print(f"📨 Sent levels update for {timeframe}")
-                
+
                 last_candle_check_time = current_time
 
             gc.collect()
-            time.sleep(6)  # Основная задержка цикла
+            time.sleep(6)
 
         except KeyboardInterrupt:
             print("\n🛑 Bot stopped manually")
