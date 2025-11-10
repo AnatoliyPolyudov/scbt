@@ -1,4 +1,3 @@
-===== main.py =====
 # main.py
 import order_manager
 import time
@@ -10,13 +9,11 @@ from telegram import send_startup_message, send_telegram_message, send_error_mes
 from callback_handler import handle_callback
 from config import TELEGRAM_BOT_TOKEN, check_env_variables
 from levels import check_smc_levels, check_new_candles, find_current_levels
-from fvg_detector import detect_fvg, monitor_fvg_independent
+from fvg_detector import detect_fvg
 
 # Глобальные переменные для отслеживания состояния
 active_breakout = None  # Текущий активный пробой
 fvg_monitoring_active = False  # Флаг активного мониторинга FVG
-fvg_monitoring_start_time = 0  # Время начала мониторинга FVG
-FVG_MONITORING_DURATION = 300000  # 5 минут мониторинга FVG (в миллисекундах)
 
 def get_updates(offset=None):
     """Get updates from Telegram via polling"""
@@ -49,19 +46,10 @@ def process_updates():
             time.sleep(5)
 
 def monitor_fvg_after_breakout():
-    """Непрерывный мониторинг FVG после пробоя"""
-    global active_breakout, fvg_monitoring_active, fvg_monitoring_start_time
+    """Непрерывный мониторинг FVG после пробоя ДО ПЕРВОГО НАЙДЕННОГО FVG"""
+    global active_breakout, fvg_monitoring_active
     
     if not fvg_monitoring_active:
-        return None
-    
-    current_time = int(time.time() * 1000)
-    
-    # Проверяем не истекло ли время мониторинга
-    if current_time - fvg_monitoring_start_time > FVG_MONITORING_DURATION:
-        print("⏰ FVG monitoring period ended (5 minutes)")
-        fvg_monitoring_active = False
-        active_breakout = None
         return None
     
     # Ищем FVG
@@ -87,16 +75,17 @@ def monitor_fvg_after_breakout():
             
             send_telegram_message("breakout_fvg", "", "", "", message)
             
-            # Отключаем мониторинг после нахождения FVG
+            # ✅ ОТКЛЮЧАЕМ мониторинг после нахождения ПЕРВОГО FVG
             fvg_monitoring_active = False
             active_breakout = None
+            print("✅ FVG monitoring STOPPED - first FVG found")
             
             return True
     
     return False
 
 def main():
-    global active_breakout, fvg_monitoring_active, fvg_monitoring_start_time
+    global active_breakout, fvg_monitoring_active
     
     print("Starting SMC Levels Bot...")
     
@@ -119,7 +108,7 @@ def main():
     last_signal_time = 0
     last_candle_check_time = 0
     last_levels_check_time = 0
-    last_fvg_monitoring_time = 0  # Для независимого мониторинга FVG
+    last_fvg_check_time = 0
 
     print("🚀 Bot started successfully. Monitoring levels every 60 seconds...")
 
@@ -127,18 +116,15 @@ def main():
         try:
             current_time = int(time.time() * 1000)
             
-            # ✅ НЕЗАВИСИМЫЙ МОНИТОРИНГ FVG КАЖДЫЕ 30 СЕКУНД (ДЛЯ ДЕБАГА)
-            if current_time - last_fvg_monitoring_time > 30000:
-                print(f"\n🔍 [{time.strftime('%H:%M:%S')}] Independent FVG Monitoring...")
-                fvg_debug = monitor_fvg_independent()
-                last_fvg_monitoring_time = current_time
-            
-            # ✅ НЕПРЕРЫВНЫЙ МОНИТОРИНГ FVG ПОСЛЕ ПРОБОЯ (каждые 10 секунд)
+            # ✅ НЕПРЕРЫВНЫЙ МОНИТОРИНГ FVG ПОСЛЕ ПРОБОЯ (каждую минуту)
             if fvg_monitoring_active:
-                if current_time - last_fvg_monitoring_time > 10000:  # Каждые 10 секунд
+                if current_time - last_fvg_check_time > 60000:  # Каждую минуту
                     print(f"🔎 [{time.strftime('%H:%M:%S')}] Active FVG monitoring after breakout...")
-                    monitor_fvg_after_breakout()
-                    last_fvg_monitoring_time = current_time
+                    found_fvg = monitor_fvg_after_breakout()
+                    last_fvg_check_time = current_time
+                    
+                    if found_fvg:
+                        print("✅ FVG found and monitoring stopped")
             
             # ПРОВЕРЯЕМ ПРОБОЙ УРОВНЕЙ КАЖДУЮ МИНУТУ (60 секунд)
             if current_time - last_levels_check_time > 60000:
@@ -152,14 +138,13 @@ def main():
                         # Сохраняем информацию о пробое и запускаем мониторинг FVG
                         active_breakout = signal
                         fvg_monitoring_active = True
-                        fvg_monitoring_start_time = current_time
                         
-                        print(f"🎯 Started FVG monitoring for {FVG_MONITORING_DURATION/1000/60} minutes after breakout")
+                        print("🎯 Started CONTINUOUS FVG monitoring (until first FVG found)")
                         
                         # Отправляем начальное уведомление о пробое
                         level_type = signal['type']
                         direction = signal['direction']
-                        message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}\n\n🔍 Monitoring for FVG setup..."
+                        message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}\n\n🔍 Continuous FVG monitoring started..."
                         
                         if signal['direction'] == "UP":
                             print("📈 BULL BREAKOUT - Monitoring for BEAR FVG")
@@ -177,8 +162,8 @@ def main():
                 
                 last_levels_check_time = current_time
 
-            # Проверяем смену свечей каждые 30 секунд
-            if current_time - last_candle_check_time > 30000:
+            # Проверяем смену свечей каждые 60 секунд
+            if current_time - last_candle_check_time > 60000:
                 new_candle = check_new_candles()
                 if new_candle:
                     print(f"🔄 New candle detected: {new_candle}")
