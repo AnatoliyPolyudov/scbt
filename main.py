@@ -9,6 +9,7 @@ from telegram import send_startup_message, send_telegram_message, send_error_mes
 from callback_handler import handle_callback
 from config import TELEGRAM_BOT_TOKEN, check_env_variables
 from levels import check_smc_levels, check_new_candles, find_current_levels
+from fvg_detector import detect_fvg
 
 def get_updates(offset=None):
     """Get updates from Telegram via polling"""
@@ -48,7 +49,7 @@ def main():
         print("Остановка бота из-за отсутствия переменных окружения")
         return
     
-    print("Monitoring 4H/1H levels...")
+    print("Monitoring 4H/1H levels + FVG...")
 
     send_startup_message()
 
@@ -76,12 +77,34 @@ def main():
 
                 if signal:
                     if current_time - last_signal_time > 60000:  # Защита от спама
-                        print(f"📨 Sending Telegram notification: {signal}")
+                        print(f"📨 Level breakout detected: {signal}")
+                        
+                        # ✅ ПОИСК КОНТРАСТНОГО FVG ПОСЛЕ ПРОБОЯ
+                        fvg_signal = detect_fvg()
+                        print(f"DEBUG: FVG check result: {fvg_signal}")
+                        
                         level_type = signal['type']
                         tf, l_type = level_type.split('_')
                         direction = signal['direction']
                         
-                        message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}"
+                        if signal['direction'] == "UP":
+                            # После пробоя ВВЕРХ ищем МЕДВЕЖИЙ FVG
+                            if fvg_signal and fvg_signal['direction'] == "BEAR":
+                                message = f"🎯 Breakout + FVG Setup\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}\n🐻 Bear FVG: {fvg_signal['bottom']} - {fvg_signal['top']}"
+                                print("🚨 BULL BREAKOUT + BEAR FVG - SELL SETUP")
+                            else:
+                                message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}"
+                                print("📈 BULL BREAKOUT ONLY")
+                        
+                        elif signal['direction'] == "DOWN":
+                            # После пробоя ВНИЗ ищем БЫЧИЙ FVG
+                            if fvg_signal and fvg_signal['direction'] == "BULL":
+                                message = f"🎯 Breakout + FVG Setup\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}\n🐂 Bull FVG: {fvg_signal['bottom']} - {fvg_signal['top']}"
+                                print("🚨 BEAR BREAKOUT + BULL FVG - BUY SETUP")
+                            else:
+                                message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}"
+                                print("📉 BEAR BREAKOUT ONLY")
+                        
                         send_telegram_message("breakout", "", "", "", message)
                         last_signal_time = current_time
                     else:
