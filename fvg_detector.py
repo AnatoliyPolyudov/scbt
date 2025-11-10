@@ -7,14 +7,56 @@ reported_fvg = {}
 def detect_fvg():
     """Обнаружить FVG на 1M таймфрейме - ПО ЛОГИКЕ LUXALGO"""
     try:
-        candles = fetch_candles_tf(SYMBOL, "1m", 3)  # Нужно только 3 свечи
+        candles = fetch_candles_tf(SYMBOL, "1m", 3)  
         if len(candles) < 3:
             return None
         
-        # Нумерация как в LuxAlgo:
-        current_candle = candles[0]  # Текущая свеча (n)
-        prev_candle = candles[1]     # Предыдущая свеча (n-1) 
-        candle_2 = candles[2]        # Свеча 2 (n-2)
+        # ✅ Правильная нумерация
+        current_candle = candles[-1]   # n
+        prev_candle = candles[-2]      # n-1
+        candle_2 = candles[-3]         # n-2
+        
+        # БЫЧИЙ FVG
+        bull_condition = (
+            current_candle[3] > candle_2[2] and   # low(n) > high(n-2)
+            prev_candle[4] > candle_2[2]          # close(n-1) > high(n-2)
+        )
+        
+        # МЕДВЕЖИЙ FVG
+        bear_condition = (
+            current_candle[2] < candle_2[3] and   # high(n) < low(n-2)
+            prev_candle[4] < candle_2[3]          # close(n-1) < low(n-2)
+        )
+
+        if bull_condition:
+            fvg_type = "BULL_FVG"
+            top = current_candle[3]
+            bottom = candle_2[2]
+        
+        elif bear_condition:
+            fvg_type = "BEAR_FVG"
+            top = candle_2[3]
+            bottom = current_candle[2]
+        
+        else:
+            return None
+        
+        fvg_key = f"{fvg_type}_{top}_{bottom}"
+        if fvg_key not in reported_fvg:
+            reported_fvg[fvg_key] = True
+            return {
+                "type": fvg_type,
+                "top": top,
+                "bottom": bottom,
+                "direction": "BULL" if fvg_type == "BULL_FVG" else "BEAR"
+            }
+
+        return None
+
+    except Exception as e:
+        print(f"FVG detection error: {e}")
+        return None
+
         
         # БЫЧИЙ FVG: low текущей > high свечи 2 И close предыдущей > high свечи 2
         bull_condition = (current_candle[3] > candle_2[2] and  # low > high[2]
