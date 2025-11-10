@@ -5,43 +5,47 @@ from config import SYMBOL
 reported_fvg = {}
 
 def detect_fvg():
-    """Обнаружить FVG на 1M таймфрейме - по логике LuxAlgo"""
+    """Обнаружить FVG по правильному описанию"""
     try:
         candles = fetch_candles_tf(SYMBOL, "1m", 3)
         if not candles or len(candles) < 3:
             return None
         
-        # ✅ Правильная нумерация — ccxt возвращает свечи от старых к новым
-        current = candles[-1]   # n
-        prev = candles[-2]      # n-1
-        candle2 = candles[-3]   # n-2
+        # candles[0] - первая (самая старая), candles[1] - вторая, candles[2] - третья (текущая)
+        first = candles[0]   # первая свеча
+        second = candles[1]  # вторая свеча  
+        third = candles[2]   # третья свеча
         
-        # БЫЧИЙ FVG
-        bull = (
-            current[3] > candle2[2] and   # low(n) > high(n-2)
-            prev[4] > candle2[2]          # close(n-1) > high(n-2)
+        # БЫЧИЙ FVG: на восходящей второй свече, между максимумом первой и минимумом третьей
+        bull_fvg = (
+            second[4] > second[1] and  # вторая свеча восходящая (close > open)
+            third[3] > first[2] and    # минимум третьей > максимум первой (не перекрываются)
+            third[3] > first[2]        # GAP: low третьей > high первой
+        )
+        
+        # МЕДВЕЖИЙ FVG: на падающей второй свече, между минимумом первой и максимумом третьей
+        bear_fvg = (
+            second[4] < second[1] and  # вторая свеча падающая (close < open)
+            third[2] < first[3] and    # максимум третьей < минимум первой (не перекрываются)
+            third[2] < first[3]        # GAP: high третьей < low первой
         )
 
-        # МЕДВЕЖИЙ FVG
-        bear = (
-            current[2] < candle2[3] and   # high(n) < low(n-2)
-            prev[4] < candle2[3]          # close(n-1) < low(n-2)
-        )
-
-        if bull:
+        if bull_fvg:
             fvg_type = "BULL_FVG"
-            top = current[3]      # low текущей
-            bottom = candle2[2]   # high свечи 2
+            top = third[3]      # минимум третьей свечи
+            bottom = first[2]   # максимум первой свечи
+            print(f"🐂 BULL FVG: {bottom} - {top}")
 
-        elif bear:
+        elif bear_fvg:
             fvg_type = "BEAR_FVG"
-            top = candle2[3]      # low свечи 2
-            bottom = current[2]   # high текущей
+            top = first[3]      # минимум первой свечи
+            bottom = third[2]   # максимум третьей свечи
+            print(f"🐻 BEAR FVG: {bottom} - {top}")
 
         else:
             return None
 
-        # Уникальный ключ зоны, чтобы не слать повторно
+        # Уникальный ключ зоны
         key = f"{fvg_type}_{top}_{bottom}"
 
         if key not in reported_fvg:
@@ -68,24 +72,25 @@ def monitor_fvg_independent():
             print("DEBUG: Not enough candles")
             return None
         
-        current = candles[-1]
-        prev = candles[-2]
-        candle2 = candles[-3]
+        first = candles[0]
+        second = candles[1] 
+        third = candles[2]
 
-        bull = current[3] > candle2[2] and prev[4] > candle2[2]
-        bear = current[2] < candle2[3] and prev[4] < candle2[3]
+        bull_fvg = second[4] > second[1] and third[3] > first[2]
+        bear_fvg = second[4] < second[1] and third[2] < first[3]
 
         print("\n🔍 FVG DEBUG CHECK")
-        print(f"Low(n): {current[3]}, High(n-2): {candle2[2]}")
-        print(f"High(n): {current[2]}, Low(n-2): {candle2[3]}")
-        print(f"Close(n-1): {prev[4]}")
-        print(f"bull={bull}, bear={bear}")
+        print(f"First candle: O:{first[1]} H:{first[2]} L:{first[3]} C:{first[4]}")
+        print(f"Second candle: O:{second[1]} H:{second[2]} L:{second[3]} C:{second[4]}")
+        print(f"Third candle: O:{third[1]} H:{third[2]} L:{third[3]} C:{third[4]}")
+        print(f"Bull FVG: second_up={second[4] > second[1]}, gap={third[3] > first[2]}")
+        print(f"Bear FVG: second_down={second[4] < second[1]}, gap={third[2] < first[3]}")
 
-        if bull:
-            print("🎯 BULL FVG FOUND")
+        if bull_fvg:
+            print("🎯 TRUE BULL FVG FOUND")
             return "BULL_FVG"
-        if bear:
-            print("🎯 BEAR FVG FOUND")
+        if bear_fvg:
+            print("🎯 TRUE BEAR FVG FOUND")
             return "BEAR_FVG"
         
         print("❌ NO FVG")
