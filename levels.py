@@ -2,7 +2,7 @@
 from exchange import fetch_candles_tf
 from config import SYMBOL
 
-reported_breakouts = {}
+reported_breakouts = {}  # Храним ПРОБИТЫЕ уровни
 last_4h_timestamp = None
 last_1h_timestamp = None
 
@@ -37,8 +37,8 @@ def find_current_levels():
         return []
 
 def check_level_breakout(current_price, levels):
-    """Проверить пробой уровней"""
-    print(f"DEBUG: Checking breakouts - Current price: {current_price}")
+    """Проверить ПРОБОЙ уровней"""
+    print(f"DEBUG: Checking BREAKOUTS - Current price: {current_price}")
     
     for level_type, level_price, level_timestamp in levels:
         key = f"{level_type}_{level_price}"
@@ -46,13 +46,11 @@ def check_level_breakout(current_price, levels):
         # Проверяем был ли уже пробой этого уровня
         if key in reported_breakouts:
             if reported_breakouts[key] != level_timestamp:
-                print(f"DEBUG: Level reset - {key} (new candle)")
                 del reported_breakouts[key]  # Сброс при смене свечи
             else:
-                print(f"DEBUG: Level already reported - {key}")
-                continue
+                continue  # Уже сообщали о пробое
         
-        # Проверяем пробой ВВЕРХ (для HIGH уровней)
+        # ПРОБОЙ ВВЕРХ: цена > HIGH уровня
         if level_type.endswith('HIGH') and current_price > level_price:
             print(f"DEBUG: 🟢 BREAKOUT UP - {level_type} {current_price} > {level_price}")
             reported_breakouts[key] = level_timestamp
@@ -63,18 +61,16 @@ def check_level_breakout(current_price, levels):
                 "current": current_price
             }
         
-        # Проверяем пробой ВНИЗ (для LOW уровней)  
+        # ПРОБОЙ ВНИЗ: цена < LOW уровня  
         elif level_type.endswith('LOW') and current_price < level_price:
             print(f"DEBUG: 🔴 BREAKOUT DOWN - {level_type} {current_price} < {level_price}")
             reported_breakouts[key] = level_timestamp
             return {
                 "type": level_type,
                 "price": level_price, 
-                "direction": "DOWN",
+                "direction": "DOWN", 
                 "current": current_price
             }
-        else:
-            print(f"DEBUG: No breakout - {level_type} {current_price} vs {level_price}")
     
     print("DEBUG: No breakouts detected")
     return None
@@ -111,9 +107,9 @@ def check_new_candles():
         return None
 
 def check_smc_levels():
-    """Основная функция проверки уровней"""
+    """Основная функция проверки уровней - ИСПОЛЬЗУЕМ ПРОБОЙ"""
     try:
-        print("DEBUG: === LEVELS CHECK STARTED ===")
+        print("DEBUG: === BREAKOUT CHECK STARTED ===")
         current_candle = fetch_candles_tf(SYMBOL, "1m", 1)
         if not current_candle:
             print("DEBUG: No 1m candle data")
@@ -123,14 +119,14 @@ def check_smc_levels():
         print(f"DEBUG: Current 1m price: {current_price}")
         
         levels = find_current_levels()
-        result = check_level_breakout(current_price, levels)
+        result = check_level_breakout(current_price, levels)  # ✅ ИСПОЛЬЗУЕМ ПРОБОЙ
         
         if result:
             print(f"DEBUG: 🚨 BREAKOUT SIGNAL: {result}")
         else:
             print("DEBUG: No breakout signal")
             
-        print("DEBUG: === LEVELS CHECK FINISHED ===")
+        print("DEBUG: === BREAKOUT CHECK FINISHED ===")
         return result
         
     except Exception as e:
