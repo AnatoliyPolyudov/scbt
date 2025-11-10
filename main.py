@@ -5,7 +5,7 @@ import gc
 import requests
 from exchange import check_connection
 from telegram import send_startup_message, send_telegram_message, send_error_message
-from callback_handler import handle_callback, fvg_search_active
+from callback_handler import handle_callback
 from config import TELEGRAM_BOT_TOKEN, check_env_variables
 from levels import check_smc_levels, check_new_candles, find_current_levels
 from fvg_detector import detect_fvg
@@ -70,6 +70,7 @@ def main():
             current_time = int(time.time() * 1000)
             
             # ✅ ПРОСТОЙ ПОИСК FVG
+            from callback_handler import fvg_search_active
             if fvg_search_active:
                 print(f"🔍 FVG SEARCH - checking now...")
                 fvg_signal = detect_fvg()
@@ -77,10 +78,6 @@ def main():
                     print(f"🎯 FVG found: {fvg_signal['type']}")
                     message = f"🎯 FVG Found\nType: {fvg_signal['type']}\nRange: {fvg_signal['bottom']} - {fvg_signal['top']}"
                     send_telegram_message("fvg", "", "", "", message)
-                    # Выключаем поиск после нахождения
-                    from callback_handler import fvg_search_active
-                    fvg_search_active = False
-                    print("⏹️ FVG SEARCH auto-disabled after find")
                 else:
                     print("❌ No FVG found")
                 
