@@ -5,19 +5,48 @@
 
 # callback_handler.py
 from event_bus import publish
+import requests
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+
+# Глобальный флаг ручного управления
+fvg_search_active = False
+
+def send_telegram_simple_message(text):
+    """Простая отправка сообщения в Telegram"""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            'chat_id': TELEGRAM_CHAT_ID,
+            'text': text,
+            'parse_mode': 'HTML'
+        }
+        response = requests.post(url, data=payload, timeout=10)
+        return response.status_code == 200
+    except Exception as e:
+        print(f"TELEGRAM_ERROR: {e}")
+        return False
 
 def handle_callback(query_data):
+    global fvg_search_active
+    
     print("CALLBACK_HANDLER: Received callback:", query_data)
     
-    if ':' in query_data:
-        # Лимитные ордера с ценой: BUY_LIMIT:3800.50 или SELL_LIMIT:3800.50
-        action, price = query_data.split(':')
-        publish("BUTTON_CLICK", {"action": action, "price": price})
+    if query_data == "TOGGLE_FVG_SEARCH":
+        # Переключаем состояние
+        fvg_search_active = not fvg_search_active
+        
+        if fvg_search_active:
+            print("🎯 FVG SEARCH ACTIVATED")
+            send_telegram_simple_message("🎯 FVG SEARCH ACTIVATED")
+            publish("BUTTON_CLICK", {"action": "FVG_SEARCH_ON"})
+        else:
+            print("⏹️ FVG SEARCH DEACTIVATED")  
+            send_telegram_simple_message("⏹️ FVG SEARCH DEACTIVATED")
+            publish("BUTTON_CLICK", {"action": "FVG_SEARCH_OFF"})
+        
     else:
-        # Кнопка без цены, например BALANCE
+        # Остальные кнопки (BALANCE и другие)
         publish("BUTTON_CLICK", {"action": query_data})
-
-
 
 ===== config.py =====
 
@@ -395,10 +424,12 @@ import gc
 import requests
 from exchange import check_connection
 from telegram import send_startup_message, send_telegram_message, send_error_message
-from callback_handler import handle_callback
+from callback_handler import handle_callback, fvg_search_active
 from config import TELEGRAM_BOT_TOKEN, check_env_variables
 from levels import check_smc_levels, check_new_candles, find_current_levels
-from fvg_detector import detect_fvg, monitor_fvg_independent
+from fvg_detector import detect_fvg
+
+# Остальной код main.py без изменений...
 
 def get_updates(offset=None):
     """Get updates from Telegram via polling"""
@@ -452,7 +483,7 @@ def main():
     last_signal_time = 0
     last_candle_check_time = 0
     last_levels_check_time = 0
-    last_fvg_check_time = 0  # ✅ Добавляем таймер для независимого мониторинга FVG
+    last_fvg_check_time = 0
 
     print("🚀 Bot started successfully. Monitoring levels every 60 seconds...")
 
@@ -460,10 +491,15 @@ def main():
         try:
             current_time = int(time.time() * 1000)
             
-            # ✅ НЕЗАВИСИМЫЙ МОНИТОРИНГ FVG КАЖДЫЕ 30 СЕКУНД (ДЛЯ ДЕБАГА)
-            if current_time - last_fvg_check_time > 30000:
-                print(f"\n🔍 [{time.strftime('%H:%M:%S')}] Independent FVG Monitoring...")
-                fvg_debug = monitor_fvg_independent()
+            # ✅ РУЧНОЙ ПОИСК FVG (только если активирован)
+            if fvg_search_active and current_time - last_fvg_check_time > 60000:
+                print(f"🔍 [{time.strftime('%H:%M:%S')}] FVG SEARCH active - checking...")
+                fvg_signal = detect_fvg()
+                if fvg_signal:
+                    print(f"🎯 FVG found: {fvg_signal['type']}")
+                    message = f"🎯 FVG Found\nType: {fvg_signal['type']}\nRange: {fvg_signal['bottom']} - {fvg_signal['top']}"
+                    send_telegram_message("fvg", "", "", "", message)
+                
                 last_fvg_check_time = current_time
             
             # ПРОВЕРЯЕМ ПРОБОЙ УРОВНЕЙ КАЖДУЮ МИНУТУ (60 секунд)
@@ -475,31 +511,10 @@ def main():
                     if current_time - last_signal_time > 60000:  # Защита от спама
                         print(f"📨 Level breakout detected: {signal}")
                         
-                        # ✅ ПОИСК КОНТРАСТНОГО FVG ПОСЛЕ ПРОБОЯ
-                        fvg_signal = detect_fvg()
-                        print(f"DEBUG: FVG check result: {fvg_signal}")
-                        
+                        # Формируем сообщение о пробое
                         level_type = signal['type']
-                        tf, l_type = level_type.split('_')
                         direction = signal['direction']
-                        
-                        if signal['direction'] == "UP":
-                            # После пробоя ВВЕРХ ищем МЕДВЕЖИЙ FVG
-                            if fvg_signal and fvg_signal['direction'] == "BEAR":
-                                message = f"🎯 Breakout + FVG Setup\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}\n🐻 Bear FVG: {fvg_signal['bottom']} - {fvg_signal['top']}"
-                                print("🚨 BULL BREAKOUT + BEAR FVG - SELL SETUP")
-                            else:
-                                message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}"
-                                print("📈 BULL BREAKOUT ONLY")
-                        
-                        elif signal['direction'] == "DOWN":
-                            # После пробоя ВНИЗ ищем БЫЧИЙ FVG
-                            if fvg_signal and fvg_signal['direction'] == "BULL":
-                                message = f"🎯 Breakout + FVG Setup\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}\n🐂 Bull FVG: {fvg_signal['bottom']} - {fvg_signal['top']}"
-                                print("🚨 BEAR BREAKOUT + BULL FVG - BUY SETUP")
-                            else:
-                                message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}"
-                                print("📉 BEAR BREAKOUT ONLY")
+                        message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}"
                         
                         send_telegram_message("breakout", "", "", "", message)
                         last_signal_time = current_time
@@ -510,8 +525,8 @@ def main():
                 
                 last_levels_check_time = current_time
 
-            # Проверяем смену свечей каждые 30 секунд
-            if current_time - last_candle_check_time > 30000:
+            # Проверяем смену свечей каждые 60 секунд
+            if current_time - last_candle_check_time > 60000:
                 new_candle = check_new_candles()
                 if new_candle:
                     print(f"🔄 New candle detected: {new_candle}")
@@ -567,72 +582,32 @@ def main():
 if __name__ == "__main__":
     main()
 
-===== order_manager.py =====
-
-
-# order_manager.py
-from event_bus import subscribe
-from exchange import place_order
-from telegram import send_balance
-
-def handle_button_click(data):
-    print("ORDER_MANAGER: Received button click:", data)
-    
-    action = data.get("action")
-    
-    price = data.get("price")
-    if price:
-        price = float(price)
-
-    if action == "BUY_LIMIT":
-        print(f"Placing BUY LIMIT at {price}")
-        place_order("BUY", price)
-    elif action == "SELL_LIMIT":
-        print(f"Placing SELL LIMIT at {price}")
-        place_order("SELL", price)
-    elif action == "BALANCE":
-        print("Запрос баланса")
-        send_balance()
-
-subscribe("BUTTON_CLICK", handle_button_click)
-
-
 ===== telegram.py =====
 
 
 # telegram.py
 import json
 import requests
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL, TF, CAPITAL, RISK_PERCENT
-from utils import calculate_position
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL
 
-def send_telegram_message(title, time_str, entry, stop_loss, take_profit):
+def send_telegram_message(title, time_str, entry, stop_loss, take_profit, keyboard=None):
     """
     Send a message to Telegram.
     """
-    if entry and stop_loss:
-        size, position_info = calculate_position(float(entry), float(stop_loss))
-        message = f"""scob {title}
-{time_str}
-entry: {entry}
-stop: {stop_loss}
-tp: {take_profit}
-
-{position_info}"""
+    message = take_profit  # Используем только текст сообщения
+    
+    # Если клавиатура не передана, используем стандартную
+    if keyboard is None:
+        # Импортируем здесь чтобы избежать циклического импорта
+        from callback_handler import fvg_search_active
+        
+        # Динамический текст кнопки FVG SEARCH
+        button_text = "🔍 FVG SEARCH" if not fvg_search_active else "⏹️ FVG SEARCH"
         
         keyboard = {
             'inline_keyboard': [
                 [
-                    {'text': 'BALANCE', 'callback_data': 'BALANCE'}
-                ]
-            ]
-        }
-    else:
-        message = take_profit
-        keyboard = {
-            'inline_keyboard': [
-                [
-                    {'text': 'BALANCE', 'callback_data': 'BALANCE'}
+                    {'text': button_text, 'callback_data': 'TOGGLE_FVG_SEARCH'}
                 ]
             ]
         }
@@ -687,11 +662,7 @@ def send_startup_message():
             levels_text += f"{level_display}\n"
         
         message = f"""🚀 Started
-symbol: {SYMBOL}
-tf: {TF}
-capital: {CAPITAL} USDT
-risk: {RISK_PERCENT}%
-balance: {rounded_balance} USDT
+{SYMBOL}
 
 📊 Current Levels
 {levels_text}"""
@@ -699,40 +670,14 @@ balance: {rounded_balance} USDT
         send_telegram_message("startup", "", "", "", message)
     except Exception as e:
         message = f"""🚀 Started
-symbol: {SYMBOL}
-tf: {TF}
-capital: {CAPITAL} USDT  
-risk: {RISK_PERCENT}%
-balance: error
+{SYMBOL}
+
 Levels: error - {e}"""
         send_telegram_message("startup", "", "", "", message)
 
 def send_error_message(error):
     message = f"Bot error: {error}"
     send_telegram_message("error", "", "", "", message)
-
-def send_balance():
-    try:
-        from exchange import get_exchange
-        ex = get_exchange()
-        balance = ex.fetch_balance()
-        usdt_balance = balance['total'].get('USDT', 0)
-        message = f"Balance: {round(usdt_balance, 1)} USDT"
-        send_telegram_message("BALANCE", "", "", "", message)
-    except Exception as e:
-        send_error_message(f"Ошибка получения баланса: {e}")
-
-def set_webhook():
-    url = "http://194.87.238.84:5000/webhook"
-    try:
-        response = requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
-            data={"url": url}
-        )
-        print(f"Webhook set: {response.status_code}")
-    except Exception as e:
-        print(f"Error setting webhook: {e}")
-
 
 ===== test_api.py =====
 
@@ -745,28 +690,3 @@ try:
     print("API работает:", candles[0] if candles else "Нет данных")
 except Exception as e:
     print("Ошибка API:", e)
-
-
-===== utils.py =====
-
-
-# utils.py
-from config import CAPITAL, RISK_PERCENT, SYMBOL
-
-def calculate_position(entry_price, stop_loss_price):
-    """Calculate position size based on risk management"""
-    risk_amount = CAPITAL * (RISK_PERCENT / 100)
-    price_diff = abs(entry_price - stop_loss_price)
-    
-    if price_diff == 0:
-        raise ValueError("Stop-loss cannot be zero")
-    
-    # Для фьючерсов USDT-margin размер позиции в USDT
-    size_usdt = risk_amount
-    
-    position_info = f"""Amount: {CAPITAL} USDT
-Risk: {RISK_PERCENT}% = {risk_amount:.2f} USDT
-Position size: {size_usdt:.2f} USDT"""
-    
-    print(position_info)
-    return size_usdt, position_info
