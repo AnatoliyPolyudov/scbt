@@ -1,5 +1,4 @@
 # main.py
-import order_manager
 import time
 import threading
 import gc
@@ -10,8 +9,6 @@ from callback_handler import handle_callback, fvg_search_active
 from config import TELEGRAM_BOT_TOKEN, check_env_variables
 from levels import check_smc_levels, check_new_candles, find_current_levels
 from fvg_detector import detect_fvg
-
-# Остальной код main.py без изменений...
 
 def get_updates(offset=None):
     """Get updates from Telegram via polling"""
