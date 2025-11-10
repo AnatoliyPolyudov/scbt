@@ -5,22 +5,21 @@ from config import SYMBOL
 reported_fvg = {}
 
 def detect_fvg():
-    """Обнаружить FVG по логике ICT индикатора (на закрытых свечах)"""
+    """Обнаружить FVG по логике ICT индикатора (только на закрытых свечах)"""
     try:
-        # Берем 4 свечи, но используем 1,2,3 (все закрытые)
-        candles = fetch_candles_tf(SYMBOL, "1m", 4)
-        if not candles or len(candles) < 4:
+        # Берем 3 свечи - все гарантированно закрыты
+        candles = fetch_candles_tf(SYMBOL, "1m", 3)
+        if not candles or len(candles) < 3:
             return None
         
-        # Используем уже закрытые свечи:
-        # candles[0] - n-3 (самая старая)
-        # candles[1] - n-2 (первая свеча FVG)  
-        # candles[2] - n-1 (средняя свеча)
-        # candles[3] - n (последняя закрытая свеча)
+        # Все свечи гарантированно закрыты:
+        # candles[0] - n-2 (3 свечи назад)
+        # candles[1] - n-1 (2 свечи назад)  
+        # candles[2] - n (предыдущая свеча)
         
-        first = candles[1]   # n-2
-        second = candles[2]  # n-1  
-        third = candles[3]   # n (последняя закрытая свеча)
+        first = candles[0]   # n-2
+        second = candles[1]  # n-1  
+        third = candles[2]   # n (последняя закрытая свеча)
         
         # БЫЧИЙ FVG
         bull_fvg = (
@@ -73,14 +72,14 @@ def detect_fvg():
 def monitor_fvg_independent():
     """НЕЗАВИСИМЫЙ мониторинг FVG — для ручной проверки"""
     try:
-        candles = fetch_candles_tf(SYMBOL, "1m", 4)
-        if not candles or len(candles) < 4:
+        candles = fetch_candles_tf(SYMBOL, "1m", 3)
+        if not candles or len(candles) < 3:
             print("DEBUG: Not enough candles")
             return None
         
-        first = candles[1]
-        second = candles[2] 
-        third = candles[3]
+        first = candles[0]
+        second = candles[1] 
+        third = candles[2]
 
         bull_fvg = (
             third[3] > first[2] and
@@ -94,12 +93,18 @@ def monitor_fvg_independent():
             second[2] >= first[3]
         )
 
-        print("\n🔍 FVG DEBUG CHECK (Closed Candles)")
+        print("\n🔍 FVG DEBUG CHECK (Closed Candles Only)")
         print(f"First (n-2): O:{first[1]} H:{first[2]} L:{first[3]} C:{first[4]}")
         print(f"Second (n-1): O:{second[1]} H:{second[2]} L:{second[3]} C:{second[4]}")
         print(f"Third (n): O:{third[1]} H:{third[2]} L:{third[3]} C:{third[4]}")
-        print(f"Bull FVG: low(n){third[3]} > high(n-2){first[2]} = {third[3] > first[2]}")
-        print(f"Bear FVG: high(n){third[2]} < low(n-2){first[3]} = {third[2] < first[3]}")
+        print(f"Bull FVG conditions:")
+        print(f"  low(n){third[3]} > high(n-2){first[2]} = {third[3] > first[2]}")
+        print(f"  low(n-1){second[3]} <= high(n-2){first[2]} = {second[3] <= first[2]}")
+        print(f"  high(n-1){second[2]} >= low(n){third[3]} = {second[2] >= third[3]}")
+        print(f"Bear FVG conditions:")
+        print(f"  high(n){third[2]} < low(n-2){first[3]} = {third[2] < first[3]}")
+        print(f"  high(n){third[2]} >= low(n-1){second[3]} = {third[2] >= second[3]}")
+        print(f"  high(n-1){second[2]} >= low(n-2){first[3]} = {second[2] >= first[3]}")
 
         if bull_fvg:
             print("🎯 TRUE BULL FVG FOUND")
