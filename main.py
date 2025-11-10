@@ -8,7 +8,7 @@ from telegram import send_startup_message, send_telegram_message, send_error_mes
 from callback_handler import handle_callback, fvg_search_active
 from config import TELEGRAM_BOT_TOKEN, check_env_variables
 from levels import check_smc_levels, check_new_candles, find_current_levels
-from fvg_detector import detect_fvg
+from fvg_detector import detect_fvg, monitor_fvg_independent
 
 def get_updates(offset=None):
     """Get updates from Telegram via polling"""
@@ -78,6 +78,12 @@ def main():
                     print(f"🎯 FVG found: {fvg_signal['type']}")
                     message = f"🎯 FVG Found\nType: {fvg_signal['type']}\nRange: {fvg_signal['bottom']} - {fvg_signal['top']}"
                     send_telegram_message("fvg", "", "", "", message)
+                else:
+                    # ДЕБАГ: запустим независимый мониторинг для проверки
+                    print("❌ No FVG found - running debug check...")
+                    debug_result = monitor_fvg_independent()
+                    if debug_result:
+                        print(f"🔴 DEBUG CONFIRMED: {debug_result} but detect_fvg() missed it!")
                 
                 last_fvg_check_time = current_time
             
