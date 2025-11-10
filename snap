@@ -26,472 +26,6 @@ def handle_callback(query_data):
 import os
 from dotenv import load_dotenv
 
-load_dotenv()  # загружает переменные из .env
-
-SYMBOL = "BTC/USDT:USDT"
-TF = "1m"
-CAPITAL = 500
-RISK_PERCENT = 1
-
-# Telegram
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-# Биржа OKX
-OKX_API_KEY = os.getenv("OKX_API_KEY")
-OKX_SECRET_KEY = os.getenv("OKX_SECRET_KEY")
-OKX_PASSPHRASE = os.getenv("OKX_PASSPHRASE")
-
-CANDLES_NEEDED = 3
-
-# Проверка загрузки переменных
-def check_env_variables():
-    required_vars = {
-        "TELEGRAM_BOT_TOKEN": TELEGRAM_BOT_TOKEN,
-        "TELEGRAM_CHAT_ID": TELEGRAM_CHAT_ID,
-        "OKX_API_KEY": OKX_API_KEY,
-        "OKX_SECRET_KEY": OKX_SECRET_KEY,
-        "OKX_PASSPHRASE": OKX_PASSPHRASE
-    }
-    
-    missing_vars = []
-    for name, value in required_vars.items():
-        if not value:
-            missing_vars.append(name)
-    
-    if missing_vars:
-        print(f"Ошибка: Отсутствуют переменные окружения: {', '.join(missing_vars)}")
-        return False
-    
-    print("Все переменные окружения загружены успешно")
-    return True
-
-===== event_bus.py =====
-
-
-subscribers = {}
-
-def subscribe(event_type, callback):
-    if event_type not in subscribers:
-        subscribers[event_type] = []
-    subscribers[event_type].append(callback)
-
-def publish(event_type, data):
-    if event_type in subscribers:
-        for callback in subscribers[event_type]:
-            callback(data)
-
-
-===== exchange.py =====
-
-
-# exchange.py
-import ccxt
-from config import SYMBOL, TF, OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE
-
-def create_exchange():
-    """Создает и возвращает объект биржи"""
-    print(f"DEBUG: Creating exchange with API Key: {OKX_API_KEY[:10]}...")  # Отладочная информация
-    
-    if not all([OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE]):
-        raise Exception("Отсутствуют учетные данные для OKX. Проверьте файл .env")
-    
-    return ccxt.okx({
-        "apiKey": OKX_API_KEY,
-        "secret": OKX_SECRET_KEY,
-        "password": OKX_PASSPHRASE,
-        "enableRateLimit": True,
-        "options": {"defaultType": "swap"}
-    })
-
-def fetch_candles(limit=3):
-    """Fetch candles from exchange - returns list instead of DataFrame"""
-    try:
-        ex = create_exchange()
-        ohlcv = ex.fetch_ohlcv(SYMBOL, TF, limit=limit)
-        return ohlcv
-    except Exception as e:
-        print(f"Error fetching data: {e}")
-        return []
-
-def check_connection():
-    """Check exchange connection"""
-    try:
-        ex = create_exchange()
-        markets = ex.load_markets()
-        print("OKX exchange connected successfully")
-        return True
-    except Exception as e:
-        print(f"Exchange connection error: {e}")
-        return False
-
-def place_order(action, price, amount=None):
-    """
-    Реальная постановка ордера.
-    action: 'BUY' или 'SELL'
-    price: цена ордера
-    amount: количество USDT (если None, берется 1% риска = 5 USDT)
-    """
-    try:
-        ex = create_exchange()
-        side = "buy" if action.upper() == "BUY" else "sell"
-        
-        if amount is None:
-            # 1% от 500 USDT = 5 USDT
-            amount = 5
-            
-        print(f"Placing {side} order: {amount} USDT at {price}")
-        
-        order = ex.create_limit_order(SYMBOL, side, amount, price)
-        print(f"Order placed: {order}")
-        return order
-    except Exception as e:
-        print(f"Order error: {e}")
-        return None
-
-
-===== main.py =====
-
-
-# main.py
-import order_manager
-import time
-import threading
-import gc
-import requests
-from exchange import check_connection
-from patterns import check_scob_pattern, wait_for_candle_close
-from telegram import send_startup_message, send_telegram_message, send_error_message
-from callback_handler import handle_callback
-from config import TELEGRAM_BOT_TOKEN, check_env_variables  # добавляем проверку
-
-def get_updates(offset=None):
-    """Get updates from Telegram via polling"""
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
-    params = {'timeout': 30, 'offset': offset}
-    try:
-        response = requests.get(url, params=params, timeout=35)
-        return response.json()
-    except:
-        return {'result': []}
-
-def process_updates():
-    """Process Telegram updates in background"""
-    last_update_id = None
-    print("Starting Telegram updates polling...")
-
-    while True:
-        try:
-            updates = get_updates(last_update_id)
-            if updates.get('result'):
-                for update in updates['result']:
-                    if 'callback_query' in update:
-                        callback_data = update['callback_query']['data']
-                        print(f"Received callback: {callback_data}")
-                        handle_callback(callback_data)
-                    last_update_id = update['update_id'] + 1
-            time.sleep(1)
-        except Exception as e:
-            print(f"Updates error: {e}")
-            time.sleep(5)
-
-def main():
-    print("Starting ScoB Bot...")
-    
-    # Проверяем переменные окружения перед запуском
-    if not check_env_variables():
-        print("Остановка бота из-за отсутствия переменных окружения")
-        return
-    
-    print("Monitoring patterns...")
-
-    send_startup_message()
-
-    if not check_connection():
-        return
-
-    polling_thread = threading.Thread(target=process_updates, daemon=True)
-    polling_thread.start()
-    print("Telegram polling started")
-
-    last_signal_time = 0
-
-    while True:
-        try:
-            wait_for_candle_close()
-            signal = check_scob_pattern()  # возвращает один сигнал
-
-            if signal:
-                current_time = int(time.time() * 1000)
-                if current_time - last_signal_time > 60000:
-                    send_telegram_message(
-                        signal["title"],
-                        signal["time"],
-                        signal["entry"],
-                        signal["stop_loss"],
-                        signal["take_profit"]
-                    )
-                    last_signal_time = current_time
-
-            gc.collect()
-            time.sleep(6)
-
-        except KeyboardInterrupt:
-            print("Bot stopped manually")
-            break
-        except Exception as e:
-            print(f"Bot error: {e}")
-            send_error_message(str(e))
-            time.sleep(30)
-
-if __name__ == "__main__":
-    main()
-
-===== order_manager.py =====
-
-
-# order_manager.py
-from event_bus import subscribe
-from exchange import place_order
-from telegram import send_balance
-
-def handle_button_click(data):
-    print("ORDER_MANAGER: Received button click:", data)
-    
-    action = data.get("action")
-    
-    # Для лимитных ордеров передается цена
-    price = data.get("price")
-    if price:
-        price = float(price)
-
-    if action == "BUY_LIMIT":
-        print(f"Placing BUY LIMIT at {price}")
-        place_order("BUY", price)
-    elif action == "SELL_LIMIT":
-        print(f"Placing SELL LIMIT at {price}")
-        place_order("SELL", price)
-    elif action == "BALANCE":
-        print("Запрос баланса")
-        send_balance()  # отправляем баланс в телеграм
-
-# Подписка на событие кнопок
-subscribe("BUTTON_CLICK", handle_button_click)
-
-
-===== patterns.py =====
-
-
-# patterns.py
-import time
-from datetime import datetime
-from exchange import fetch_candles, SYMBOL
-from config import CANDLES_NEEDED
-import numpy as np
-import talib
-
-def wait_for_candle_close():
-    current_time = int(time.time() * 1000)
-    candle_duration = 60000  # 1 minutes
-    next_candle_time = (current_time // candle_duration + 1) * candle_duration
-    wait_time = (next_candle_time - current_time) / 1000
-    if wait_time > 0:
-        print(f"Waiting for candle close: {wait_time:.1f} sec")
-        time.sleep(wait_time)
-
-def check_scob_pattern():
-    """Detect Single Candle Order Block (ScoB) pattern"""
-    print("Analyzing candles for ScoB pattern...")
-
-    # Берем на 1 свечу больше, чтобы анализировать только закрытые свечи
-    candles = fetch_candles(limit=CANDLES_NEEDED + 21)
-    if len(candles) < CANDLES_NEEDED + 21:
-        print("Not enough candles for analysis")
-        return None
-
-    # Анализируем свечи c1, c2, c3 - все должны быть закрытыми
-    # Берем свечи -4, -3, -2 (вместо -3, -2, -1)
-    c1, c2, c3 = candles[-4], candles[-3], candles[-2]
-    high1, low1, close1 = c1[2], c1[3], c1[4]
-    high2, low2, close2 = c2[2], c2[3], c2[4]
-    high3, low3, close3 = c3[2], c3[3], c3[4]
-
-    time_str = datetime.fromtimestamp(c3[0] / 1000).strftime('%H:%M')
-
-    # LONG pattern - проверяем только закрытые свечи
-    if low2 < low1 and close2 > low1 and close3 > high2:
-        entry = high2
-        stop_loss = low2
-        take_profit = entry + (entry - stop_loss) * 2
-        print(f"ScoB LONG pattern detected at {time_str}")
-        return {
-            "title": "long",
-            "time": time_str,
-            "entry": round(entry, 2),
-            "stop_loss": round(stop_loss, 2),
-            "take_profit": round(take_profit, 2)
-        }
-
-    # SHORT pattern - проверяем только закрытые свечи
-    elif high2 > high1 and close2 < high1 and close3 < low2:
-        entry = low2
-        stop_loss = high2
-        take_profit = entry - (stop_loss - entry) * 2
-        print(f"ScoB SHORT pattern detected at {time_str}")
-        return {
-            "title": "short",
-            "time": time_str,
-            "entry": round(entry, 2),
-            "stop_loss": round(stop_loss, 2),
-            "take_profit": round(take_profit, 2)
-        }
-
-    print(f"No ScoB pattern found at {time_str}")
-    return None
-
-===== telegram.py =====
-
-
-# telegram.py
-import json
-import requests
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL, TF, CAPITAL, RISK_PERCENT
-from utils import calculate_position
-
-def send_telegram_message(title, time_str, entry, stop_loss, take_profit):
-    """
-    Send a message to Telegram.
-    If entry and stop_loss are set, include position info.
-    """
-    if entry and stop_loss:
-        size, position_info = calculate_position(float(entry), float(stop_loss))
-        message = f"""scob {title}
-{time_str}
-entry: {entry}
-stop: {stop_loss}
-tp: {take_profit}
-
-{position_info}"""
-        
-        keyboard = {
-            'inline_keyboard': [
-                [
-                    {'text': 'BUY LIMIT', 'callback_data': f'BUY_LIMIT:{entry}'},
-                    {'text': 'SELL LIMIT', 'callback_data': f'SELL_LIMIT:{entry}'},
-                    {'text': 'BALANCE', 'callback_data': 'BALANCE'}
-                ]
-            ]
-        }
-    else:
-        message = take_profit
-        keyboard = None
-    
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {
-            'chat_id': TELEGRAM_CHAT_ID,
-            'text': message,
-            'parse_mode': 'HTML',
-            'reply_markup': json.dumps(keyboard) if keyboard else None
-        }
-        response = requests.post(url, data=payload, timeout=10)
-        return response.status_code == 200
-    except Exception as e:
-        print(f"TELEGRAM_ERROR: {e}")
-        return False
-
-def send_startup_message():
-    try:
-        from exchange import create_exchange
-        ex = create_exchange()
-        balance = ex.fetch_balance()
-        usdt_balance = balance['total'].get('USDT', 0)
-        rounded_balance = round(usdt_balance, 1)
-        
-        message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%\n{rounded_balance} USDT"
-        send_telegram_message("startup", "", "", "", message)
-    except Exception as e:
-        message = f"started\n{SYMBOL}\n{TF}\n{CAPITAL} USDT\n{RISK_PERCENT}%\nBalance: error"
-        send_telegram_message("startup", "", "", "", message)
-
-def send_error_message(error):
-    """Send error message to Telegram"""
-    message = f"Bot error: {error}"
-    send_telegram_message("error", "", "", "", message)
-
-def send_balance():
-    """Send current account balance to Telegram"""
-    try:
-        from exchange import create_exchange
-        ex = create_exchange()
-        balance = ex.fetch_balance()
-        usdt_balance = balance['total'].get('USDT', 0)
-        message = f"{round(usdt_balance, 1)} USDT"
-        send_telegram_message("BALANCE", "", "", "", message)
-    except Exception as e:
-        send_error_message(f"Ошибка получения баланса: {e}")
-
-def set_webhook():
-    url = "http://194.87.238.84:5000/webhook"
-    try:
-        response = requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
-            data={"url": url}
-        )
-        print(f"Webhook set: {response.status_code}")
-    except Exception as e:
-        print(f"Error setting webhook: {e}")
-
-===== utils.py =====
-
-
-# utils.py
-from config import CAPITAL, RISK_PERCENT
-
-def calculate_position(entry_price, stop_loss_price):
-    """Calculate position size based on risk management"""
-    risk_amount = CAPITAL * (RISK_PERCENT / 100)
-    price_diff = abs(entry_price - stop_loss_price)
-    
-    if price_diff == 0:
-        raise ValueError("Stop-loss cannot be zero")
-    
-    size = risk_amount / price_diff
-    
-    position_info = f"""Amount: {CAPITAL} USDT
-Risk: {RISK_PERCENT}% = {risk_amount:.2f} USDT
-Position size: {size:.4f} ETH"""
-    
-    print(position_info)
-    return size, position_info
-
-
-===== callback_handler.py =====
-
-
-# callback_handler.py
-from event_bus import publish
-
-def handle_callback(query_data):
-    print("CALLBACK_HANDLER: Received callback:", query_data)
-    
-    if ':' in query_data:
-        # Лимитные ордера с ценой: BUY_LIMIT:3800.50 или SELL_LIMIT:3800.50
-        action, price = query_data.split(':')
-        publish("BUTTON_CLICK", {"action": action, "price": price})
-    else:
-        # Кнопка без цены, например BALANCE
-        publish("BUTTON_CLICK", {"action": query_data})
-
-
-
-===== config.py =====
-
-
-# config.py
-import os
-from dotenv import load_dotenv
-
 load_dotenv()
 
 SYMBOL = "BTC/USDT:USDT"
@@ -617,7 +151,7 @@ def place_order(action, price, amount=0.001):
 from exchange import fetch_candles_tf
 from config import SYMBOL
 
-reported_levels = {}
+reported_breakouts = {}
 last_4h_timestamp = None
 last_1h_timestamp = None
 
@@ -633,6 +167,7 @@ def find_current_levels():
             timestamp = prev_candle[0]
             levels.append(("4H_HIGH", prev_candle[2], timestamp))
             levels.append(("4H_LOW", prev_candle[3], timestamp))
+            print(f"DEBUG: 4H Levels - HIGH: {prev_candle[2]}, LOW: {prev_candle[3]}")
 
         # 1H предыдущая закрытая свеча
         c1 = fetch_candles_tf(SYMBOL, "1h", 2)
@@ -641,29 +176,56 @@ def find_current_levels():
             timestamp = prev_candle[0]
             levels.append(("1H_HIGH", prev_candle[2], timestamp))
             levels.append(("1H_LOW", prev_candle[3], timestamp))
+            print(f"DEBUG: 1H Levels - HIGH: {prev_candle[2]}, LOW: {prev_candle[3]}")
 
+        print(f"DEBUG: Total levels to monitor: {len(levels)}")
         return levels
         
     except Exception as e:
-        print(f"Error in find_current_levels: {e}")
+        print(f"ERROR in find_current_levels: {e}")
         return []
 
-def check_level_touch(current_price, levels):
-    """Проверить точное касание уровней"""
+def check_level_breakout(current_price, levels):
+    """Проверить пробой уровней"""
+    print(f"DEBUG: Checking breakouts - Current price: {current_price}")
+    
     for level_type, level_price, level_timestamp in levels:
-        if current_price == level_price:
-            key = f"{level_type}_{level_price}"
-            
-            if key in reported_levels:
-                if reported_levels[key] != level_timestamp:
-                    del reported_levels[key]
-            
-            if key not in reported_levels:
-                reported_levels[key] = level_timestamp
-                return {
-                    "type": level_type,
-                    "price": level_price
-                }
+        key = f"{level_type}_{level_price}"
+        
+        # Проверяем был ли уже пробой этого уровня
+        if key in reported_breakouts:
+            if reported_breakouts[key] != level_timestamp:
+                print(f"DEBUG: Level reset - {key} (new candle)")
+                del reported_breakouts[key]  # Сброс при смене свечи
+            else:
+                print(f"DEBUG: Level already reported - {key}")
+                continue
+        
+        # Проверяем пробой ВВЕРХ (для HIGH уровней)
+        if level_type.endswith('HIGH') and current_price > level_price:
+            print(f"DEBUG: 🟢 BREAKOUT UP - {level_type} {current_price} > {level_price}")
+            reported_breakouts[key] = level_timestamp
+            return {
+                "type": level_type,
+                "price": level_price,
+                "direction": "UP",
+                "current": current_price
+            }
+        
+        # Проверяем пробой ВНИЗ (для LOW уровней)  
+        elif level_type.endswith('LOW') and current_price < level_price:
+            print(f"DEBUG: 🔴 BREAKOUT DOWN - {level_type} {current_price} < {level_price}")
+            reported_breakouts[key] = level_timestamp
+            return {
+                "type": level_type,
+                "price": level_price, 
+                "direction": "DOWN",
+                "current": current_price
+            }
+        else:
+            print(f"DEBUG: No breakout - {level_type} {current_price} vs {level_price}")
+    
+    print("DEBUG: No breakouts detected")
     return None
 
 def check_new_candles():
@@ -700,16 +262,28 @@ def check_new_candles():
 def check_smc_levels():
     """Основная функция проверки уровней"""
     try:
+        print("DEBUG: === LEVELS CHECK STARTED ===")
         current_candle = fetch_candles_tf(SYMBOL, "1m", 1)
         if not current_candle:
+            print("DEBUG: No 1m candle data")
             return None
 
         current_price = current_candle[0][4]
+        print(f"DEBUG: Current 1m price: {current_price}")
+        
         levels = find_current_levels()
-        return check_level_touch(current_price, levels)
+        result = check_level_breakout(current_price, levels)
+        
+        if result:
+            print(f"DEBUG: 🚨 BREAKOUT SIGNAL: {result}")
+        else:
+            print("DEBUG: No breakout signal")
+            
+        print("DEBUG: === LEVELS CHECK FINISHED ===")
+        return result
         
     except Exception as e:
-        print(f"Levels check error: {e}")
+        print(f"ERROR in check_smc_levels: {e}")
         return None
 
 
@@ -779,28 +353,42 @@ def main():
 
     last_signal_time = 0
     last_candle_check_time = 0
+    last_levels_check_time = 0
+
+    print("🚀 Bot started successfully. Monitoring levels every 60 seconds...")
 
     while True:
         try:
-            # Проверяем касание уровней
-            signal = check_smc_levels()
+            current_time = int(time.time() * 1000)
+            
+            # ПРОВЕРЯЕМ ПРОБОЙ УРОВНЕЙ КАЖДУЮ МИНУТУ (60 секунд)
+            if current_time - last_levels_check_time > 60000:
+                print(f"\n🕒 [{time.strftime('%H:%M:%S')}] Checking for breakouts...")
+                signal = check_smc_levels()
 
-            if signal:
-                current_time = int(time.time() * 1000)
-                if current_time - last_signal_time > 60000:  # Защита от спама 60 сек
-                    level_type = signal['type']
-                    tf, l_type = level_type.split('_')
-                    level_display = f"{tf.lower()} {l_type.lower()}"
-                    
-                    message = f"🎯 Level Touch\n{level_display}: {signal['price']}"
-                    send_telegram_message("level", "", "", "", message)
-                    last_signal_time = current_time
+                if signal:
+                    if current_time - last_signal_time > 60000:  # Защита от спама
+                        print(f"📨 Sending Telegram notification: {signal}")
+                        level_type = signal['type']
+                        tf, l_type = level_type.split('_')
+                        direction = signal['direction']
+                        
+                        message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}"
+                        send_telegram_message("breakout", "", "", "", message)
+                        last_signal_time = current_time
+                    else:
+                        print("⏳ Signal skipped (spam protection - 60s cooldown)")
+                else:
+                    print("📊 No breakout signals detected")
+                
+                last_levels_check_time = current_time
 
             # Проверяем смену свечей каждые 30 секунд
-            current_time = int(time.time() * 1000)
-            if current_time - last_candle_check_time > 30000:  # Каждые 30 секунд
+            if current_time - last_candle_check_time > 30000:
                 new_candle = check_new_candles()
                 if new_candle:
+                    print(f"🔄 New candle detected: {new_candle}")
+                    
                     # Получаем актуальные уровни
                     levels = find_current_levels()
                     
@@ -834,6 +422,7 @@ def main():
                     timeframe = new_candle.replace('_NEW', '').lower()
                     message = f"🔄 New {timeframe} Candle\n\n📊 Updated Levels:\n{levels_text}"
                     send_telegram_message("update", "", "", "", message)
+                    print(f"📨 Sent levels update for {timeframe}")
                 
                 last_candle_check_time = current_time
 
@@ -841,10 +430,10 @@ def main():
             time.sleep(6)  # Основная задержка цикла
 
         except KeyboardInterrupt:
-            print("Bot stopped manually")
+            print("\n🛑 Bot stopped manually")
             break
         except Exception as e:
-            print(f"Bot error: {e}")
+            print(f"❌ Bot error: {e}")
             send_error_message(str(e))
             time.sleep(30)
 
