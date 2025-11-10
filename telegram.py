@@ -4,31 +4,25 @@ import requests
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SYMBOL, TF, CAPITAL, RISK_PERCENT
 from utils import calculate_position
 
-def send_telegram_message(title, time_str, entry, stop_loss, take_profit):
+def send_telegram_message(title, time_str, entry, stop_loss, take_profit, keyboard=None):
     """
     Send a message to Telegram.
     """
-    if entry and stop_loss:
-        size, position_info = calculate_position(float(entry), float(stop_loss))
-        message = f"""scob {title}
-{time_str}
-entry: {entry}
-stop: {stop_loss}
-tp: {take_profit}
-
-{position_info}"""
+    message = take_profit  # Используем только текст сообщения
+    
+    # Если клавиатура не передана, используем стандартную
+    if keyboard is None:
+        # Импортируем здесь чтобы избежать циклического импорта
+        from callback_handler import fvg_search_active
+        
+        # Динамический текст кнопки FVG SEARCH
+        button_text = "🔍 FVG SEARCH" if not fvg_search_active else "⏹️ FVG SEARCH"
         
         keyboard = {
             'inline_keyboard': [
                 [
-                    {'text': 'BALANCE', 'callback_data': 'BALANCE'}
-                ]
-            ]
-        }
-    else:
-        message = take_profit
-        keyboard = {
-            'inline_keyboard': [
+                    {'text': button_text, 'callback_data': 'TOGGLE_FVG_SEARCH'}
+                ],
                 [
                     {'text': 'BALANCE', 'callback_data': 'BALANCE'}
                 ]
@@ -49,6 +43,7 @@ tp: {take_profit}
         print(f"TELEGRAM_ERROR: {e}")
         return False
 
+# Остальные функции без изменений...
 def send_startup_message():
     try:
         from exchange import get_exchange
@@ -85,11 +80,7 @@ def send_startup_message():
             levels_text += f"{level_display}\n"
         
         message = f"""🚀 Started
-symbol: {SYMBOL}
-tf: {TF}
-capital: {CAPITAL} USDT
-risk: {RISK_PERCENT}%
-balance: {rounded_balance} USDT
+{SYMBOL}
 
 📊 Current Levels
 {levels_text}"""
@@ -97,11 +88,8 @@ balance: {rounded_balance} USDT
         send_telegram_message("startup", "", "", "", message)
     except Exception as e:
         message = f"""🚀 Started
-symbol: {SYMBOL}
-tf: {TF}
-capital: {CAPITAL} USDT  
-risk: {RISK_PERCENT}%
-balance: error
+{SYMBOL}
+
 Levels: error - {e}"""
         send_telegram_message("startup", "", "", "", message)
 
@@ -119,14 +107,3 @@ def send_balance():
         send_telegram_message("BALANCE", "", "", "", message)
     except Exception as e:
         send_error_message(f"Ошибка получения баланса: {e}")
-
-def set_webhook():
-    url = "http://194.87.238.84:5000/webhook"
-    try:
-        response = requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
-            data={"url": url}
-        )
-        print(f"Webhook set: {response.status_code}")
-    except Exception as e:
-        print(f"Error setting webhook: {e}")
