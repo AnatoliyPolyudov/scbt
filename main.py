@@ -8,7 +8,7 @@ from telegram import send_startup_message, send_telegram_message, send_error_mes
 from callback_handler import handle_callback, fvg_search_active
 from config import TELEGRAM_BOT_TOKEN, check_env_variables
 from levels import check_smc_levels, check_new_candles, find_current_levels
-from fvg_detector import detect_fvg, monitor_fvg_independent
+from fvg_detector import detect_fvg
 
 def get_updates(offset=None):
     """Get updates from Telegram via polling"""
@@ -62,7 +62,6 @@ def main():
     last_signal_time = 0
     last_candle_check_time = 0
     last_levels_check_time = 0
-    last_fvg_check_time = 0
 
     print("🚀 Bot started successfully. Monitoring levels every 60 seconds...")
 
@@ -70,22 +69,22 @@ def main():
         try:
             current_time = int(time.time() * 1000)
             
-            # ✅ РУЧНОЙ ПОИСК FVG (только если активирован)
-            if fvg_search_active and current_time - last_fvg_check_time > 60000:
-                print(f"🔍 [{time.strftime('%H:%M:%S')}] FVG SEARCH active - checking...")
+            # ✅ ПРОСТОЙ ПОИСК FVG
+            if fvg_search_active:
+                print(f"🔍 FVG SEARCH - checking now...")
                 fvg_signal = detect_fvg()
                 if fvg_signal:
                     print(f"🎯 FVG found: {fvg_signal['type']}")
                     message = f"🎯 FVG Found\nType: {fvg_signal['type']}\nRange: {fvg_signal['bottom']} - {fvg_signal['top']}"
                     send_telegram_message("fvg", "", "", "", message)
+                    # Выключаем поиск после нахождения
+                    from callback_handler import fvg_search_active
+                    fvg_search_active = False
+                    print("⏹️ FVG SEARCH auto-disabled after find")
                 else:
-                    # ДЕБАГ: запустим независимый мониторинг для проверки
-                    print("❌ No FVG found - running debug check...")
-                    debug_result = monitor_fvg_independent()
-                    if debug_result:
-                        print(f"🔴 DEBUG CONFIRMED: {debug_result} but detect_fvg() missed it!")
+                    print("❌ No FVG found")
                 
-                last_fvg_check_time = current_time
+                time.sleep(60)  # Ждем минуту перед следующей проверкой
             
             # ПРОВЕРЯЕМ ПРОБОЙ УРОВНЕЙ КАЖДУЮ МИНУТУ (60 секунд)
             if current_time - last_levels_check_time > 60000:
