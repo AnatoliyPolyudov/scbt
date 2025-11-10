@@ -1,14 +1,27 @@
+
+
 # callback_handler.py
 from event_bus import publish
 
+# Глобальный флаг ручного управления
+fvg_search_active = False
+
 def handle_callback(query_data):
+    global fvg_search_active
+    
     print("CALLBACK_HANDLER: Received callback:", query_data)
     
-    if ':' in query_data:
-        # Лимитные ордера с ценой: BUY_LIMIT:3800.50 или SELL_LIMIT:3800.50
-        action, price = query_data.split(':')
-        publish("BUTTON_CLICK", {"action": action, "price": price})
+    if query_data == "TOGGLE_FVG_SEARCH":
+        # Переключаем состояние
+        fvg_search_active = not fvg_search_active
+        
+        if fvg_search_active:
+            print("🎯 FVG SEARCH ACTIVATED")
+            publish("BUTTON_CLICK", {"action": "FVG_SEARCH_ON"})
+        else:
+            print("⏹️ FVG SEARCH DEACTIVATED")  
+            publish("BUTTON_CLICK", {"action": "FVG_SEARCH_OFF"})
+        
     else:
-        # Кнопка без цены, например BALANCE
+        # Остальные кнопки (BALANCE и другие)
         publish("BUTTON_CLICK", {"action": query_data})
-
