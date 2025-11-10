@@ -81,7 +81,8 @@ def main():
                 else:
                     print("❌ No FVG found")
                 
-                time.sleep(60)  # Ждем минуту перед следующей проверкой
+                # Ждем 60 секунд перед следующей проверкой
+                time.sleep(60)
             
             # ПРОВЕРЯЕМ ПРОБОЙ УРОВНЕЙ КАЖДУЮ МИНУТУ (60 секунд)
             if current_time - last_levels_check_time > 60000:
