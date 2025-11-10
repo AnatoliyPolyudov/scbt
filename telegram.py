@@ -22,9 +22,6 @@ def send_telegram_message(title, time_str, entry, stop_loss, take_profit, keyboa
             'inline_keyboard': [
                 [
                     {'text': button_text, 'callback_data': 'TOGGLE_FVG_SEARCH'}
-                ],
-                [
-                    {'text': 'BALANCE', 'callback_data': 'BALANCE'}
                 ]
             ]
         }
@@ -97,13 +94,4 @@ def send_error_message(error):
     message = f"Bot error: {error}"
     send_telegram_message("error", "", "", "", message)
 
-def send_balance():
-    try:
-        from exchange import get_exchange
-        ex = get_exchange()
-        balance = ex.fetch_balance()
-        usdt_balance = balance['total'].get('USDT', 0)
-        message = f"Balance: {round(usdt_balance, 1)} USDT"
-        send_telegram_message("BALANCE", "", "", "", message)
-    except Exception as e:
-        send_error_message(f"Ошибка получения баланса: {e}")
+# Функцию send_balance можно удалить, так как кнопка убрана
