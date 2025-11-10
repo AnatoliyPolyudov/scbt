@@ -1,3 +1,4 @@
+===== main.py =====
 # main.py
 import order_manager
 import time
@@ -10,6 +11,12 @@ from callback_handler import handle_callback
 from config import TELEGRAM_BOT_TOKEN, check_env_variables
 from levels import check_smc_levels, check_new_candles, find_current_levels
 from fvg_detector import detect_fvg, monitor_fvg_independent
+
+# Глобальные переменные для отслеживания состояния
+active_breakout = None  # Текущий активный пробой
+fvg_monitoring_active = False  # Флаг активного мониторинга FVG
+fvg_monitoring_start_time = 0  # Время начала мониторинга FVG
+FVG_MONITORING_DURATION = 300000  # 5 минут мониторинга FVG (в миллисекундах)
 
 def get_updates(offset=None):
     """Get updates from Telegram via polling"""
@@ -41,7 +48,56 @@ def process_updates():
             print(f"Updates error: {e}")
             time.sleep(5)
 
+def monitor_fvg_after_breakout():
+    """Непрерывный мониторинг FVG после пробоя"""
+    global active_breakout, fvg_monitoring_active, fvg_monitoring_start_time
+    
+    if not fvg_monitoring_active:
+        return None
+    
+    current_time = int(time.time() * 1000)
+    
+    # Проверяем не истекло ли время мониторинга
+    if current_time - fvg_monitoring_start_time > FVG_MONITORING_DURATION:
+        print("⏰ FVG monitoring period ended (5 minutes)")
+        fvg_monitoring_active = False
+        active_breakout = None
+        return None
+    
+    # Ищем FVG
+    fvg_signal = detect_fvg()
+    
+    if fvg_signal:
+        # Проверяем контрастность FVG относительно пробоя
+        if (active_breakout['direction'] == "UP" and fvg_signal['direction'] == "BEAR") or \
+           (active_breakout['direction'] == "DOWN" and fvg_signal['direction'] == "BULL"):
+            
+            print(f"🎯 CONFIRMED SETUP: {active_breakout['direction']} Breakout + {fvg_signal['direction']} FVG")
+            
+            # Формируем сообщение
+            level_type = active_breakout['type']
+            direction = active_breakout['direction']
+            
+            if active_breakout['direction'] == "UP":
+                message = f"🎯 Breakout + FVG Setup\n{level_type.replace('_', ' ')} {direction}\nLevel: {active_breakout['price']}\nCurrent: {active_breakout['current']}\n🐻 Bear FVG: {fvg_signal['bottom']} - {fvg_signal['top']}"
+                print("🚨 BULL BREAKOUT + BEAR FVG - SELL SETUP")
+            else:
+                message = f"🎯 Breakout + FVG Setup\n{level_type.replace('_', ' ')} {direction}\nLevel: {active_breakout['price']}\nCurrent: {active_breakout['current']}\n🐂 Bull FVG: {fvg_signal['bottom']} - {fvg_signal['top']}"
+                print("🚨 BEAR BREAKOUT + BULL FVG - BUY SETUP")
+            
+            send_telegram_message("breakout_fvg", "", "", "", message)
+            
+            # Отключаем мониторинг после нахождения FVG
+            fvg_monitoring_active = False
+            active_breakout = None
+            
+            return True
+    
+    return False
+
 def main():
+    global active_breakout, fvg_monitoring_active, fvg_monitoring_start_time
+    
     print("Starting SMC Levels Bot...")
     
     # Проверяем переменные окружения перед запуском
@@ -63,7 +119,7 @@ def main():
     last_signal_time = 0
     last_candle_check_time = 0
     last_levels_check_time = 0
-    last_fvg_check_time = 0  # ✅ Добавляем таймер для независимого мониторинга FVG
+    last_fvg_monitoring_time = 0  # Для независимого мониторинга FVG
 
     print("🚀 Bot started successfully. Monitoring levels every 60 seconds...")
 
@@ -72,10 +128,17 @@ def main():
             current_time = int(time.time() * 1000)
             
             # ✅ НЕЗАВИСИМЫЙ МОНИТОРИНГ FVG КАЖДЫЕ 30 СЕКУНД (ДЛЯ ДЕБАГА)
-            if current_time - last_fvg_check_time > 30000:
+            if current_time - last_fvg_monitoring_time > 30000:
                 print(f"\n🔍 [{time.strftime('%H:%M:%S')}] Independent FVG Monitoring...")
                 fvg_debug = monitor_fvg_independent()
-                last_fvg_check_time = current_time
+                last_fvg_monitoring_time = current_time
+            
+            # ✅ НЕПРЕРЫВНЫЙ МОНИТОРИНГ FVG ПОСЛЕ ПРОБОЯ (каждые 10 секунд)
+            if fvg_monitoring_active:
+                if current_time - last_fvg_monitoring_time > 10000:  # Каждые 10 секунд
+                    print(f"🔎 [{time.strftime('%H:%M:%S')}] Active FVG monitoring after breakout...")
+                    monitor_fvg_after_breakout()
+                    last_fvg_monitoring_time = current_time
             
             # ПРОВЕРЯЕМ ПРОБОЙ УРОВНЕЙ КАЖДУЮ МИНУТУ (60 секунд)
             if current_time - last_levels_check_time > 60000:
@@ -86,31 +149,24 @@ def main():
                     if current_time - last_signal_time > 60000:  # Защита от спама
                         print(f"📨 Level breakout detected: {signal}")
                         
-                        # ✅ ПОИСК КОНТРАСТНОГО FVG ПОСЛЕ ПРОБОЯ
-                        fvg_signal = detect_fvg()
-                        print(f"DEBUG: FVG check result: {fvg_signal}")
+                        # Сохраняем информацию о пробое и запускаем мониторинг FVG
+                        active_breakout = signal
+                        fvg_monitoring_active = True
+                        fvg_monitoring_start_time = current_time
                         
+                        print(f"🎯 Started FVG monitoring for {FVG_MONITORING_DURATION/1000/60} minutes after breakout")
+                        
+                        # Отправляем начальное уведомление о пробое
                         level_type = signal['type']
-                        tf, l_type = level_type.split('_')
                         direction = signal['direction']
+                        message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}\n\n🔍 Monitoring for FVG setup..."
                         
                         if signal['direction'] == "UP":
-                            # После пробоя ВВЕРХ ищем МЕДВЕЖИЙ FVG
-                            if fvg_signal and fvg_signal['direction'] == "BEAR":
-                                message = f"🎯 Breakout + FVG Setup\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}\n🐻 Bear FVG: {fvg_signal['bottom']} - {fvg_signal['top']}"
-                                print("🚨 BULL BREAKOUT + BEAR FVG - SELL SETUP")
-                            else:
-                                message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}"
-                                print("📈 BULL BREAKOUT ONLY")
-                        
-                        elif signal['direction'] == "DOWN":
-                            # После пробоя ВНИЗ ищем БЫЧИЙ FVG
-                            if fvg_signal and fvg_signal['direction'] == "BULL":
-                                message = f"🎯 Breakout + FVG Setup\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}\n🐂 Bull FVG: {fvg_signal['bottom']} - {fvg_signal['top']}"
-                                print("🚨 BEAR BREAKOUT + BULL FVG - BUY SETUP")
-                            else:
-                                message = f"🎯 Level Breakout\n{level_type.replace('_', ' ')} {direction}\nLevel: {signal['price']}\nCurrent: {signal['current']}"
-                                print("📉 BEAR BREAKOUT ONLY")
+                            print("📈 BULL BREAKOUT - Monitoring for BEAR FVG")
+                            message += "\n🎯 Looking for BEAR FVG for SELL setup"
+                        else:
+                            print("📉 BEAR BREAKOUT - Monitoring for BULL FVG") 
+                            message += "\n🎯 Looking for BULL FVG for BUY setup"
                         
                         send_telegram_message("breakout", "", "", "", message)
                         last_signal_time = current_time
