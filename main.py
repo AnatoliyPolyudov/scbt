@@ -9,7 +9,7 @@ from telegram import send_startup_message, send_telegram_message, send_error_mes
 from callback_handler import handle_callback
 from config import TELEGRAM_BOT_TOKEN, check_env_variables
 from levels import check_smc_levels, check_new_candles, find_current_levels
-from fvg_detector import detect_fvg
+from fvg_detector import detect_fvg, monitor_fvg_independent
 
 def get_updates(offset=None):
     """Get updates from Telegram via polling"""
@@ -63,12 +63,19 @@ def main():
     last_signal_time = 0
     last_candle_check_time = 0
     last_levels_check_time = 0
+    last_fvg_check_time = 0  # ✅ Добавляем таймер для независимого мониторинга FVG
 
     print("🚀 Bot started successfully. Monitoring levels every 60 seconds...")
 
     while True:
         try:
             current_time = int(time.time() * 1000)
+            
+            # ✅ НЕЗАВИСИМЫЙ МОНИТОРИНГ FVG КАЖДЫЕ 30 СЕКУНД (ДЛЯ ДЕБАГА)
+            if current_time - last_fvg_check_time > 30000:
+                print(f"\n🔍 [{time.strftime('%H:%M:%S')}] Independent FVG Monitoring...")
+                fvg_debug = monitor_fvg_independent()
+                last_fvg_check_time = current_time
             
             # ПРОВЕРЯЕМ ПРОБОЙ УРОВНЕЙ КАЖДУЮ МИНУТУ (60 секунд)
             if current_time - last_levels_check_time > 60000:
