@@ -87,9 +87,7 @@ def main():
 
                         if fvg_signal:
                             print(f"🎯 FVG FOUND: {fvg_signal}")
-                            message = f"""🎯 FVG Found
-Type: {fvg_signal['type']}
-Range: {fvg_signal['bottom']} - {fvg_signal['top']}"""
+                            message = f"FVG found"
                             send_telegram_message("fvg", "", "", "", message)
                         else:
                             print("❌ No FVG this candle")
