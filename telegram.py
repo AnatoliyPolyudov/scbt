@@ -15,7 +15,7 @@ def send_telegram_message(title, time_str, entry, stop_loss, take_profit, keyboa
         from callback_handler import fvg_search_active
         
         # Динамический текст кнопки FVG SEARCH
-        button_text = "🔍 FVG SEARCH" if not fvg_search_active else "⏹️ FVG SEARCH"
+        button_text = "FVG SEARCH" if not fvg_search_active else "FVG SEARCH"
         
         keyboard = {
             'inline_keyboard': [
@@ -51,41 +51,20 @@ def send_startup_message():
         
         levels = find_current_levels()
         
-        levels_4h = []
-        levels_1h = []
-        
+        # ИЗМЕНИЛ ФОРМАТ СООБЩЕНИЯ
+        levels_text = ""
         for level_type, level_price, _ in levels:
             if level_type.startswith('4H'):
-                levels_4h.append((level_type, level_price))
-            else:
-                levels_1h.append((level_type, level_price))
+                tf, l_type = level_type.split('_')
+                levels_text += f"{l_type.lower()} {level_price}\n"
         
-        levels_text = ""
-        
-        for level_type, level_price in levels_4h:
-            tf, l_type = level_type.split('_')
-            level_display = f"{tf.lower()} {l_type.lower()}: {level_price}"
-            levels_text += f"{level_display}\n"
-        
-        levels_text += "\n"
-        
-        for level_type, level_price in levels_1h:
-            tf, l_type = level_type.split('_')
-            level_display = f"{tf.lower()} {l_type.lower()}: {level_price}"
-            levels_text += f"{level_display}\n"
-        
-        message = f"""🚀 Started
-{SYMBOL}
-
-📊 Current Levels
+        message = f"""{SYMBOL}
 {levels_text}"""
         
         send_telegram_message("startup", "", "", "", message)
     except Exception as e:
-        message = f"""🚀 Started
-{SYMBOL}
-
-Levels: error - {e}"""
+        message = f"""{SYMBOL}
+error - {e}"""
         send_telegram_message("startup", "", "", "", message)
 
 def send_error_message(error):
