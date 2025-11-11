@@ -4,10 +4,9 @@ from config import SYMBOL
 
 reported_breakouts = {}  # Храним ПРОБИТЫЕ уровни
 last_4h_timestamp = None
-last_1h_timestamp = None
 
 def find_current_levels():
-    """Найти уровни предыдущих закрытых свечей 4H и 1H"""
+    """Найти уровни предыдущих закрытых свечей 4H"""
     levels = []
 
     try:
@@ -19,15 +18,6 @@ def find_current_levels():
             levels.append(("4H_HIGH", prev_candle[2], timestamp))
             levels.append(("4H_LOW", prev_candle[3], timestamp))
             print(f"DEBUG: 4H Levels - HIGH: {prev_candle[2]}, LOW: {prev_candle[3]}")
-
-        # 1H предыдущая закрытая свеча
-        c1 = fetch_candles_tf(SYMBOL, "1h", 2)
-        if c1 and len(c1) >= 2:
-            prev_candle = c1[-2]
-            timestamp = prev_candle[0]
-            levels.append(("1H_HIGH", prev_candle[2], timestamp))
-            levels.append(("1H_LOW", prev_candle[3], timestamp))
-            print(f"DEBUG: 1H Levels - HIGH: {prev_candle[2]}, LOW: {prev_candle[3]}")
 
         print(f"DEBUG: Total levels to monitor: {len(levels)}")
         return levels
@@ -76,8 +66,8 @@ def check_level_breakout(current_price, levels):
     return None
 
 def check_new_candles():
-    """Проверить смену свечей 4H и 1H"""
-    global last_4h_timestamp, last_1h_timestamp
+    """Проверить смену свечей 4H"""
+    global last_4h_timestamp
     
     try:
         # Проверяем 4H свечу
@@ -89,16 +79,6 @@ def check_new_candles():
             elif current_4h_timestamp != last_4h_timestamp:
                 last_4h_timestamp = current_4h_timestamp
                 return "4H_NEW"
-        
-        # Проверяем 1H свечу
-        c1 = fetch_candles_tf(SYMBOL, "1h", 1)
-        if c1:
-            current_1h_timestamp = c1[0][0]
-            if last_1h_timestamp is None:
-                last_1h_timestamp = current_1h_timestamp
-            elif current_1h_timestamp != last_1h_timestamp:
-                last_1h_timestamp = current_1h_timestamp
-                return "1H_NEW"
                 
         return None
         
