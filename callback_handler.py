@@ -32,10 +32,10 @@ def handle_callback(query_data):
         
         if fvg_search_active:
             print("🎯 FVG SEARCH ACTIVATED")
-            send_telegram_simple_message("🎯 FVG SEARCH ACTIVATED")
+            send_telegram_simple_message("FVG search activated")
         else:
             print("⏹️ FVG SEARCH DEACTIVATED")  
-            send_telegram_simple_message("⏹️ FVG SEARCH DEACTIVATED")
+            send_telegram_simple_message("FVG search deactivated")
         
     else:
         # Остальные кнопки
