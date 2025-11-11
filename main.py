@@ -48,7 +48,7 @@ def main():
         print("Остановка бота из-за отсутствия переменных окружения")
         return
 
-    print("Monitoring 4H/1H levels + FVG search...")
+    print("Monitoring 4H levels + FVG search...")
 
     send_startup_message()
 
@@ -103,12 +103,8 @@ Range: {fvg_signal['bottom']} - {fvg_signal['top']}"""
                 if signal:
                     if current_time - last_signal_time > 60000:
                         print(f"📨 Level breakout detected: {signal}")
-                        level_type = signal['type']
-                        direction = signal['direction']
-                        message = f"""🎯 Level Breakout
-{level_type.replace('_', ' ')} {direction}
-Level: {signal['price']}
-Current: {signal['current']}"""
+                        # ПРОСТОЕ СООБЩЕНИЕ О ПРОБОЕ
+                        message = f"break {signal['price']}"
                         send_telegram_message("breakout", "", "", "", message)
                         last_signal_time = current_time
                     else:
@@ -119,7 +115,7 @@ Current: {signal['current']}"""
                 last_levels_check_time = current_time
 
 
-            # ✅ Проверка новых свечей 1H / 4H
+            # ✅ Проверка новых свечей 4H
             if current_time - last_candle_check_time > 60000:
                 new_candle = check_new_candles()
 
@@ -127,16 +123,15 @@ Current: {signal['current']}"""
                     print(f"🔄 New candle detected: {new_candle}")
                     levels = find_current_levels()
 
+                    # ПРОСТОЕ СООБЩЕНИЕ ОБ ОБНОВЛЕНИИ УРОВНЕЙ
                     levels_text = ""
-                    for t, p, _ in levels:
-                        tf, l_type = t.split('_')
-                        levels_text += f"{tf.lower()} {l_type.lower()}: {p}\n"
+                    for level_type, level_price, _ in levels:
+                        if level_type.startswith('4H'):
+                            tf, l_type = level_type.split('_')
+                            levels_text += f"{l_type.lower()} {level_price}\n"
 
                     timeframe = new_candle.replace('_NEW', '').lower()
-                    message = f"""🔄 New {timeframe} Candle
-
-📊 Updated Levels:
-{levels_text}"""
+                    message = f"update {timeframe}\n{levels_text}"
                     send_telegram_message("update", "", "", "", message)
 
                 last_candle_check_time = current_time
