@@ -56,9 +56,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 SYMBOL = "BTC/USDT:USDT"
-TF = "1m"
-CAPITAL = 500
-RISK_PERCENT = 1
+TF = "3m"
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -190,7 +188,7 @@ def detect_fvg():
         third  = n-1 (та, которая только что закрылась)
     """
     try:
-        candles = fetch_candles_tf(SYMBOL, "1m", 4)  # Берём 4 свечи
+        candles = fetch_candles_tf(SYMBOL, "3m", 4)  # Берём 4 свечи
         if not candles or len(candles) < 4:
             return None
 
@@ -441,7 +439,7 @@ def main():
             # ✅ FVG SEARCH — строго после закрытия 1m свечи
             from callback_handler import fvg_search_active
             if fvg_search_active:
-                candles = fetch_candles_tf(SYMBOL, "1m", 2)
+                candles = fetch_candles_tf(SYMBOL, "3m", 2)
                 if candles and len(candles) >= 2:
                     last_closed_ts = candles[-2][0]
 
