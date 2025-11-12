@@ -75,7 +75,7 @@ def main():
             # ✅ FVG SEARCH — строго после закрытия 1m свечи
             from callback_handler import fvg_search_active
             if fvg_search_active:
-                candles = fetch_candles_tf(SYMBOL, "1m", 2)
+                candles = fetch_candles_tf(SYMBOL, "3m", 2)
                 if candles and len(candles) >= 2:
                     last_closed_ts = candles[-2][0]
 
