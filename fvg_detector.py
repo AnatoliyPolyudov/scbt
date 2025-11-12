@@ -14,7 +14,7 @@ def detect_fvg():
         third  = n-1 (та, которая только что закрылась)
     """
     try:
-        candles = fetch_candles_tf(SYMBOL, "1m", 4)  # Берём 4 свечи
+        candles = fetch_candles_tf(SYMBOL, "3m", 4)  # Берём 4 свечи
         if not candles or len(candles) < 4:
             return None
 
