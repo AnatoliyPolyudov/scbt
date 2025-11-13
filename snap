@@ -111,7 +111,7 @@ def publish(event_type, data):
 
 # exchange.py
 import ccxt
-from config import SYMBOL, TF, OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE
+from config import SYMBOL, OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE
 
 _exchange_instance = None
 
@@ -168,7 +168,6 @@ def place_order(action, price, amount=0.001):
     except Exception as e:
         print(f"Order error: {e}")
         return None
-
 
 ===== fvg_detector.py =====
 
