@@ -1,12 +1,12 @@
 # fvg_detector.py
 from exchange import fetch_candles_tf
-from config import SYMBOL
+from config import SYMBOL, FVG_TF
 
 reported_fvg = {}
 
 def detect_fvg():
     """
-    Обнаружение FVG строго ПО ЗАКРЫТЫМ свечам.
+    Обнаружение FVG строго по ЗАКРЫТЫМ свечам.
     Берём 4 свечи, чтобы гарантированно исключить текущую (незакрытую).
     Используем последние три закрытые:
         first  = n-3
@@ -14,7 +14,7 @@ def detect_fvg():
         third  = n-1 (та, которая только что закрылась)
     """
     try:
-        candles = fetch_candles_tf(SYMBOL, "3m", 4)  # Берём 4 свечи
+        candles = fetch_candles_tf(SYMBOL, FVG_TF, 4)  # Используем timeframe из config
         if not candles or len(candles) < 4:
             return None
 
@@ -23,31 +23,28 @@ def detect_fvg():
         second = candles[-3]   # n-2
         third  = candles[-2]   # n-1
 
+        # Данные по свечам
+        first_high, first_low = first[2], first[3]
+        second_high, second_low = second[2], second[3]
+        third_high, third_low = third[2], third[3]
+
         # БЫЧИЙ FVG (Fair Value Gap вверх)
-        bull_fvg = (
-            third[3] > first[2] and      # low(n-1) > high(n-3)
-            second[3] <= first[2] and    # low(n-2) <= high(n-3)
-            second[2] >= third[3]        # high(n-2) >= low(n-1)
-        )
+        bull_fvg = third_low > first_high
 
         # МЕДВЕЖИЙ FVG (Fair Value Gap вниз)
-        bear_fvg = (
-            third[2] < first[3] and      # high(n-1) < low(n-3)
-            third[2] >= second[3] and    # high(n-1) >= low(n-2)
-            second[2] >= first[3]        # high(n-2) >= low(n-3)
-        )
+        bear_fvg = third_high < first_low
 
         if not bull_fvg and not bear_fvg:
             return None
 
         if bull_fvg:
             fvg_type = "BULL_FVG"
-            top = third[3]      # low(n-1)
-            bottom = first[2]   # high(n-3)
+            top = third_low      # нижняя граница гэпа
+            bottom = first_high  # верхняя граница гэпа
         else:
             fvg_type = "BEAR_FVG"
-            top = first[3]      # low(n-3)
-            bottom = third[2]   # high(n-1)
+            top = first_low      # нижняя граница гэпа
+            bottom = third_high  # верхняя граница гэпа
 
         key = f"{fvg_type}_{top}_{bottom}"
 
