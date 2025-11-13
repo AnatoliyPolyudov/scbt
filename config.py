@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 SYMBOL = "BTC/USDT:USDT"
-TF = "5m"
+FVG_TF = "5m"
+LEVEL_TF = "4h"
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
