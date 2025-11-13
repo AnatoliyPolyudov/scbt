@@ -1,6 +1,6 @@
 # exchange.py
 import ccxt
-from config import SYMBOL, TF, OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE
+from config import SYMBOL, OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE
 
 _exchange_instance = None
 
